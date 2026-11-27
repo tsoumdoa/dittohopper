@@ -28,6 +28,9 @@ public sealed record SnapshotInfo
     public required UnitSystem Units { get; init; }
     public required double AbsoluteTolerance { get; init; }
 
+    /// <summary>The model's angle tolerance in radians; null when the source doesn't say.</summary>
+    public double? AngleTolerance { get; init; }
+
     /// <summary>
     /// Grid spacing the hashes were snapped to, in <see cref="Units"/>. The adapter hashes coordinates in the
     /// snapshot's own units. Two snapshots' hashes compare only when their grids are the same length in metres
@@ -87,7 +90,17 @@ public sealed record BlockRecord
 
     /// <summary>One entry per nested instance inside this definition (repeats allowed), in any order.</summary>
     public IReadOnlyList<NestedBlock> Nested { get; init; } = [];
+
+    /// <summary>
+    /// One entry per member object (nested instances included), in any order: its fingerprint (the hash it
+    /// contributes to <see cref="ContentHash"/>, which leaves the layer out) and its layer. Compared as a
+    /// multiset through the layer map, so a renamed layer changes nothing but a member moved to another does.
+    /// </summary>
+    public IReadOnlyList<BlockMember> Members { get; init; } = [];
 }
+
+/// <summary>A block definition's member: the hash of its geometry and attributes, and the layer it sits on.</summary>
+public readonly record struct BlockMember(ulong Hash, Guid LayerId);
 
 /// <summary>
 /// A nested instance: the definition it places, and a hash of its placement (transform and attributes, the

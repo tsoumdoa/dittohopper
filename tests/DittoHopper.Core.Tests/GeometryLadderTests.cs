@@ -137,4 +137,36 @@ public class GeometryLadderTests
         Assert.Equal("rotated 90° about Z", set.Change!.To);
         Assert.Equal(3, set.Objects.Count);
     }
+
+    [Fact]
+    public void ADiagonalMoveCountsItsFullLength()
+    {
+        var (a, b, ids) = Edited(1);
+        var g = new FakeGeometry();
+        MoveBy(g, ids[0], new Vec3(0.009, 0.009, 0));   // each component below 0.01, the length above
+        var change = Assert.Single(ModelDiff.Diff(a.Build(), b.Build(), geometry: g).Geometry);
+        Assert.Equal(GeometryLevel.Moved, change.Level);
+    }
+
+    [Fact]
+    public void EqualHashesAreRecheckedWhenShapeToleranceIsFinerThanTheGrid()
+    {
+        var a = new SnapshotBuilder();
+        var ids = a.Many(a.Layer("L"), 2);
+        var b = a.Clone();                       // same hashes on the 0.01 grid
+        var g = new FakeGeometry();
+        MoveBy(g, ids[0], new Vec3(0.004, 0.004, 0));
+        g.Unmoved[ids[1]] = 0;
+        var fine = new DiffSettings { ShapeTolerance = 0.001 };
+
+        var r = ModelDiff.Diff(a.Build(), b.Build(), fine, g);
+        var moved = Assert.Single(r.Geometry);   // the unmoved pair is unchanged, not listed as Data-only
+        Assert.Equal((ids[0], GeometryLevel.Moved), (moved.A, moved.Level));
+        Assert.Contains(r.Header.Notes, n => n.Contains("also compared by shape"));
+
+        var withoutService = ModelDiff.Diff(a.Build(), b.Build(), fine);
+        Assert.Empty(withoutService.Geometry);
+        Assert.Contains(withoutService.Header.Notes, n => n.Contains("smaller differences are not reported"));
+        Assert.DoesNotContain(ModelDiff.Diff(a.Build(), b.Build(), geometry: g).Header.Notes, n => n.Contains("hash grid"));
+    }
 }

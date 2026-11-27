@@ -48,16 +48,17 @@ public sealed class Xform : IEquatable<Xform>
 
     public IReadOnlyList<double> Values => m;
 
-    /// <summary>Equal within <paramref name="translationTol"/> on the translation column and 1e-9 elsewhere.</summary>
+    /// <summary>
+    /// Equal when the translations are at most <paramref name="translationTol"/> apart (as a vector, so a
+    /// diagonal offset counts its full length) and every other entry is within 1e-9.
+    /// </summary>
     public bool AlmostEquals(Xform other, double translationTol)
     {
         for (int i = 0; i < 16; i++)
-        {
-            double tol = i is 3 or 7 or 11 ? translationTol : 1e-9;
-            if (Math.Abs(m[i] - other.m[i]) > tol)
+            if (i is not (3 or 7 or 11) && Math.Abs(m[i] - other.m[i]) > 1e-9)
                 return false;
-        }
-        return true;
+        double dx = m[3] - other.m[3], dy = m[7] - other.m[7], dz = m[11] - other.m[11];
+        return Math.Sqrt(dx * dx + dy * dy + dz * dz) <= translationTol;
     }
 
     /// <summary>This transform applied after <paramref name="first"/>: the matrix product this × first.</summary>

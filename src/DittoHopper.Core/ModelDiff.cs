@@ -13,7 +13,7 @@ public static class ModelDiff
     /// every pair whose geometry hash differs is <see cref="GeometryLevel.Unclassified"/>.</param>
     public static DiffResult Diff(ModelSnapshot a, ModelSnapshot b, DiffSettings? settings = null, IGeometryService? geometry = null)
     {
-        var ctx = new DiffContext(a, b, settings ?? new DiffSettings());
+        var ctx = new DiffContext(a, b, settings ?? new DiffSettings(), geometry is not null);
         TableDiff.MatchTables(ctx);
         var pairs = ObjectMatcher.Run(ctx);
         TableDiff.InferLayers(ctx, pairs);
@@ -68,7 +68,7 @@ internal sealed class DiffContext
     public readonly Dictionary<(TableKind, Guid), string> RemovedEvent = [], AddedEvent = [];
     public readonly Dictionary<Guid, string> ContentEvent = [];
 
-    public DiffContext(ModelSnapshot a, ModelSnapshot b, DiffSettings settings)
+    public DiffContext(ModelSnapshot a, ModelSnapshot b, DiffSettings settings, bool hasGeometryService = false)
     {
         A = new Side(a);
         B = new Side(b);
@@ -76,7 +76,22 @@ internal sealed class DiffContext
         if (settings.ShapeTolerance is double s && !(s > 0 && double.IsFinite(s)))
             throw new ArgumentOutOfRangeException(nameof(settings), "ShapeTolerance must be a positive number, or null.");
         (Header, Scale) = MakeHeader(a.Info, b.Info, hasBlocks: a.Blocks.Count + b.Blocks.Count > 0);
+        double grid = Math.Max(a.Info.HashGrid, b.Info.HashGrid * Scale);
+        HashProvesUnchanged = ShapeTolerance >= grid * (1 - 1e-9);
+        if (!HashProvesUnchanged)
+        {
+            string consequence = hasGeometryService
+                ? "pairs with equal geometry hashes are also compared by shape."
+                : "equal geometry hashes count as unchanged, so smaller differences are not reported.";
+            Header = Header with { Notes = [.. Header.Notes, Inv($"Shape tolerance {ShapeTolerance} is finer than the hash grid {grid}: {consequence}")] };
+        }
     }
+
+    /// <summary>
+    /// True when equal snapped hashes prove a pair unchanged: the hash grid is no coarser than the shape
+    /// tolerance (the default, where both are the absolute tolerance).
+    /// </summary>
+    public readonly bool HashProvesUnchanged;
 
     public IEnumerable<TableMap> AllTableMaps => [Layers, Blocks, Materials, Linetypes, Groups];
 
