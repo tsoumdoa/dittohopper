@@ -1,0 +1,312 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>UI mocks</title>
+<style>
+*{box-sizing:border-box}
+.wrap{font-size:14px;line-height:1.5;color:var(--foreground)}
+.eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-foreground);font-weight:600;margin-bottom:2px}
+h2{font-size:19px;line-height:1.25;margin:0 0 6px;font-weight:650;letter-spacing:-.01em}
+h3{font-size:14px;margin:22px 0 8px;font-weight:600}
+p{margin:0 0 10px}
+.lede{color:var(--muted-foreground);max-width:66ch;margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+.muted{color:var(--muted-foreground)}
+.add{--c:var(--success)}.rem{--c:var(--destructive)}.mod{--c:var(--warning)}.evt{--c:var(--info)}.same{--c:var(--muted-foreground)}
+.pill{display:inline-flex;align-items:center;justify-content:center;padding:0 7px;border-radius:999px;font-size:10.5px;font-weight:650;white-space:nowrap;color:var(--c);background:color-mix(in srgb,var(--c) 15%,transparent);line-height:17px}
+.badge{font-family:var(--font-mono);font-size:10px;padding:0 5px;border-radius:4px;border:1px solid var(--border);color:var(--muted-foreground);white-space:nowrap;line-height:16px}
+
+/* GH canvas */
+.gh{padding:10px 12px;background:color-mix(in srgb,var(--muted) 45%,transparent);background-image:radial-gradient(color-mix(in srgb,var(--muted-foreground) 22%,transparent) 1px,transparent 1px);background-size:16px 16px}
+#gh{width:100%;height:auto;display:block}
+#gh .body{fill:var(--card);stroke:color-mix(in srgb,var(--muted-foreground) 55%,transparent);stroke-width:1}
+#gh .head{fill:color-mix(in srgb,var(--primary) 16%,var(--card))}
+#gh .title{fill:var(--foreground);font-size:12px;font-weight:700}
+#gh .port{fill:var(--foreground);font-size:11px}
+#gh .port.v{fill:var(--muted-foreground)}
+#gh .grip{fill:var(--card);stroke:var(--muted-foreground);stroke-width:1.2}
+#gh .wire{fill:none;stroke:color-mix(in srgb,var(--muted-foreground) 80%,transparent);stroke-width:1.6}
+#gh .panel{fill:color-mix(in srgb,var(--warning) 16%,var(--card));stroke:color-mix(in srgb,var(--warning) 45%,transparent)}
+#gh .ptxt{fill:var(--foreground);font-size:11px;font-family:var(--font-mono)}
+#gh .btn{fill:color-mix(in srgb,var(--primary) 22%,var(--card));stroke:var(--primary)}
+#gh .cnt{font-size:10.5px;font-weight:700;fill:var(--c)}
+#gh .status{font-size:11px;fill:var(--destructive);font-weight:600}
+.ann{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;margin:10px 0 0;padding:0;list-style:none;font-size:12.5px;color:var(--muted-foreground)}
+.ann b{color:var(--foreground);font-weight:600}
+@media (max-width:600px){.ann{grid-template-columns:1fr}}
+
+/* Rhino review mock */
+.mock{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--card)}
+.tb{display:flex;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted-foreground)}
+.tb .d{display:flex;gap:5px}.tb .d i{width:9px;height:9px;border-radius:50%;background:color-mix(in srgb,var(--muted-foreground) 35%,transparent)}
+.mg{display:grid;grid-template-columns:minmax(0,1fr) 252px}
+@media (max-width:640px){.mg{grid-template-columns:1fr}}
+.left{display:flex;flex-direction:column;min-width:0}
+.vp{background:color-mix(in srgb,var(--muted) 55%,transparent);border-bottom:1px solid var(--border);position:relative}
+.vptop{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px 0;flex-wrap:wrap}
+.vpname{font-size:11.5px;color:var(--muted-foreground);font-weight:600}
+.modes{display:inline-flex;gap:2px;padding:2px;border:1px solid var(--border);border-radius:7px;background:var(--card)}
+.modes button{all:unset;cursor:pointer;font-size:11.5px;padding:2px 8px;border-radius:5px;color:var(--muted-foreground)}
+.modes button.on{background:var(--primary);color:var(--primary-foreground)}
+#vp{width:100%;height:auto;display:block}
+#vp .bx polygon{stroke-width:.8;stroke-linejoin:round;cursor:pointer}
+#vp .bx.n polygon{stroke:color-mix(in srgb,var(--muted-foreground) 65%,transparent)}
+#vp .bx.n .ft{fill:color-mix(in srgb,var(--muted-foreground) 24%,transparent)}
+#vp .bx.n .fx{fill:color-mix(in srgb,var(--muted-foreground) 17%,transparent)}
+#vp .bx.n .fy{fill:color-mix(in srgb,var(--muted-foreground) 11%,transparent)}
+#vp .bx.c polygon{stroke:var(--c)}
+#vp .bx.c .ft{fill:color-mix(in srgb,var(--c) 62%,transparent)}
+#vp .bx.c .fx{fill:color-mix(in srgb,var(--c) 46%,transparent)}
+#vp .bx.c .fy{fill:color-mix(in srgb,var(--c) 32%,transparent)}
+#vp .bx.ghost polygon{fill:none;stroke:var(--c);stroke-dasharray:3 2;stroke-width:1}
+#vp .bx.ghost.rem .ft{fill:color-mix(in srgb,var(--destructive) 12%,transparent)}
+#vp .bx.sel polygon{stroke:var(--foreground);stroke-width:1.7}
+#vp .dim{opacity:.4}
+#vp .faint{opacity:.07}
+#vp .arrow{stroke:var(--warning);stroke-width:1.6;fill:none}
+#vp .ahp{fill:var(--warning)}
+#vp .plab{font-size:11px;fill:var(--muted-foreground);font-weight:600}
+#vp .div{stroke:var(--foreground);stroke-width:1.2;opacity:.6}
+#vp .handle{fill:var(--card);stroke:var(--foreground);stroke-width:1.2}
+.swipe{display:none;padding:0 12px 4px}
+.swipe input{width:100%}
+.vlegend{display:flex;flex-wrap:wrap;gap:3px 12px;font-size:11px;color:var(--muted-foreground);padding:0 10px 8px}
+.vlegend i{display:inline-block;width:11px;height:8px;border-radius:2px;margin-right:4px;vertical-align:0}
+.detail{padding:12px 14px}
+.dh{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+.dh b{font-size:14px}
+.mb{font-size:11.5px;color:var(--muted-foreground);margin-bottom:8px}
+.mb .badge{margin-right:4px}
+table.pt{width:100%;border-collapse:collapse;font-size:12px}
+table.pt th{text-align:left;font-weight:600;color:var(--muted-foreground);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;padding:3px 6px;border-bottom:1px solid var(--border)}
+table.pt td{padding:4px 6px;border-bottom:1px solid color-mix(in srgb,var(--border) 70%,transparent);font-family:var(--font-mono);font-size:11px;vertical-align:top}
+table.pt td:first-child{font-family:var(--font-sans);font-size:12px;color:var(--muted-foreground);white-space:nowrap}
+table.pt tr.ch td:nth-child(3){color:var(--warning);font-weight:600}
+table.pt tr.ch td:nth-child(2){text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--muted-foreground) 60%,transparent);color:var(--muted-foreground)}
+.acts{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.acts button{all:unset;cursor:pointer;font-size:12px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--background)}
+.acts button.pri{background:var(--primary);color:var(--primary-foreground);border-color:var(--primary)}
+.acts button.ghostb{color:var(--muted-foreground)}
+.panel{border-left:1px solid var(--border);display:flex;flex-direction:column;min-width:0}
+@media (max-width:640px){.panel{border-left:0;border-top:1px solid var(--border)}}
+.ph{padding:10px 12px 8px;border-bottom:1px solid var(--border)}
+.ph .t{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:13px}
+.ph .t span{color:var(--muted-foreground);font-weight:400;font-size:13px}
+.cmp{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px}
+.cmp .v{flex:1;border:1px solid var(--border);border-radius:6px;padding:2px 6px;font-family:var(--font-mono);background:var(--background);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cmp .x{color:var(--muted-foreground)}
+.chips{display:flex;flex-wrap:wrap;gap:4px;padding:8px 12px;border-bottom:1px solid var(--border)}
+.chips button{all:unset;cursor:pointer;font-size:11px;padding:1px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted-foreground);font-weight:600}
+.chips button b{color:var(--c,var(--foreground))}
+.chips button.on{border-color:var(--c,var(--foreground));background:color-mix(in srgb,var(--c,var(--foreground)) 12%,transparent);color:var(--foreground)}
+.list{flex:1;overflow:auto;padding:2px 0 6px}
+.gh4{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted-foreground);font-weight:700;padding:8px 12px 3px}
+.li{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:7px;align-items:center;padding:5px 12px;cursor:pointer;font-size:12px;line-height:1.3;border-left:2px solid transparent}
+.li:hover{background:color-mix(in srgb,var(--muted) 50%,transparent)}
+.li.on{background:color-mix(in srgb,var(--primary) 12%,transparent);border-left-color:var(--primary)}
+.li .dot{width:8px;height:8px;border-radius:50%;background:var(--c)}
+.li .tt{min-width:0}
+.li .tt b{font-weight:600;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.li .tt span{color:var(--muted-foreground);font-size:11px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.li .ok{font-size:12px;color:var(--success);width:12px;text-align:center}
+.li.rv .tt{opacity:.55}
+.pf{border-top:1px solid var(--border);padding:8px 12px;font-size:11px;color:var(--muted-foreground)}
+.pf .bar{height:5px;border-radius:3px;background:color-mix(in srgb,var(--muted-foreground) 20%,transparent);overflow:hidden;margin-bottom:5px}
+.pf .bar i{display:block;height:100%;background:var(--success);transition:width .2s}
+.pf .row{display:flex;justify-content:space-between}
+kbd{font-family:var(--font-mono);font-size:10px;border:1px solid var(--border);border-bottom-width:2px;border-radius:4px;padding:0 4px;color:var(--foreground)}
+.ux{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media (max-width:640px){.ux{grid-template-columns:1fr}}
+.ux .card{padding:12px 14px}
+.ux .k{font-size:13px;font-weight:650;margin-bottom:3px}
+.ux .d{font-size:12.5px;color:var(--muted-foreground);line-height:1.45}
+</style></head><body>
+<div class="wrap">
+  <div class="eyebrow">UI / UX</div>
+  <h2>Two surfaces, one DiffResult</h2>
+  <p class="lede">The GH components produce the result and check rules against it. The Rhino panel is where people look at it. Both use the same colors and the same evidence badges.</p>
+
+  <h3 style="margin-top:6px">A · Grasshopper definition (v0)</h3>
+  <div class="card gh"><svg id="gh" viewBox="0 0 712 330" role="img" aria-label="Mock Grasshopper definition: two Snapshot components and Diff Settings feed Model Diff, whose Result feeds Diff Filter, Diff Preview, Assert Unchanged and Open Review."></svg></div>
+  <ul class="ann">
+    <li><b>Snapshot</b> is cached per file version, so moving a slider downstream doesn't re-read the 3dm.</li>
+    <li><b>Model Diff</b> outputs plain GH geometry and attributes, so any downstream component works with them.</li>
+    <li><b>Assert Unchanged</b> turns the diff into a QA gate. It can run headless on Rhino.Compute or in CI.</li>
+    <li><b>Open Review</b> sends the result to the Rhino panel below for browsing.</li>
+  </ul>
+
+  <h3>B · Rhino review panel + viewport overlay (v1) <span class="muted" style="font-weight:400;font-size:12.5px">· interactive: click rows, objects, modes; <kbd>J</kbd>/<kbd>K</kbd>, <kbd>Space</kbd></span></h3>
+  <div class="mock">
+    <div class="tb"><span class="d"><i></i><i></i><i></i></span>tower_v13.3dm · Rhino</div>
+    <div class="mg">
+      <div class="left">
+        <div class="vp">
+          <div class="vptop"><span class="vpname">Perspective</span>
+            <div class="modes" id="modes"><button data-m="over" class="on">Overlay</button><button data-m="side">Side by side</button><button data-m="swipe">Swipe</button><button data-m="only">Changes only</button></div></div>
+          <svg id="vp" viewBox="0 0 420 270"></svg>
+          <div class="swipe" id="swipeRow"><input type="range" id="swipe" min="20" max="400" value="230" aria-label="Swipe position"></div>
+          <div class="vlegend">
+            <span><i style="background:color-mix(in srgb,var(--success) 65%,transparent)"></i>added</span>
+            <span><i style="border:1px dashed var(--destructive)"></i>removed</span>
+            <span><i style="background:color-mix(in srgb,var(--warning) 65%,transparent)"></i>modified</span>
+            <span><i style="border:1px dashed var(--warning)"></i>previous state</span>
+            <span><i style="background:color-mix(in srgb,var(--muted-foreground) 30%,transparent)"></i>unchanged</span>
+          </div>
+        </div>
+        <div class="detail" id="detail"></div>
+      </div>
+      <div class="panel">
+        <div class="ph"><div class="t">Model Diff <span>⟳ ⋯</span></div>
+          <div class="cmp"><span class="v">v12 · Tue 24 Nov</span><span class="x">⇄</span><span class="v">Current doc</span></div></div>
+        <div class="chips" id="chips"></div>
+        <div class="list" id="list"></div>
+        <div class="pf"><div class="bar"><i id="pbar"></i></div><div class="row"><span id="ptxt"></span><span><kbd>J</kbd><kbd>K</kbd> <kbd>Space</kbd></span></div></div>
+      </div>
+    </div>
+  </div>
+
+  <h3>UX choices worth keeping</h3>
+  <div class="ux">
+    <div class="card"><div class="k">Review is a to-do list</div><div class="d">Rows can be ticked off, and that state is saved with the DiffResult. A team can sign off on "v12 → v13" and anyone can see what was checked.</div></div>
+    <div class="card"><div class="k">Confidence is always visible</div><div class="d">Each pair shows a <span class="badge">GUID</span>, <span class="badge">hash</span> or <span class="badge">fuzzy 0.91</span> badge. Fuzzy pairs get an <b>Unlink</b> button, because a wrong pairing is worse than an added + removed pair.</div></div>
+    <div class="card"><div class="k">Causes first, objects second</div><div class="d">Table events sit at the top and expand to show the objects they affect. One layer rename should never turn into 212 rows.</div></div>
+  </div>
+</div>
+
+<script>
+/* ---------- GH canvas ---------- */
+(function(){
+  const S=[];const grips={};
+  const comp=(key,x,y,title,ins,outs,w=150,opt={})=>{
+    const rows=Math.max(ins.length,outs.length,1), h=22+rows*18+8;
+    S.push(`<rect class="${opt.btn?'btn':'body'}" x="${x}" y="${y}" width="${w}" height="${h}" rx="6"/>`);
+    if(!opt.btn) S.push(`<path class="head" d="M${x+.5},${y+22} V${y+6} Q${x+.5},${y+.5} ${x+6},${y+.5} H${x+w-6} Q${x+w-.5},${y+.5} ${x+w-.5},${y+6} V${y+22} Z"/>`);
+    S.push(`<text class="title" x="${x+w/2}" y="${y+15.5}" text-anchor="middle">${title}</text>`);
+    ins.forEach((p,i)=>{const gy=y+22+i*18+11;grips[key+'.in'+i]=[x,gy];
+      const [nm,val]=p.split('|');S.push(`<text class="port" x="${x+9}" y="${gy+4}">${nm}${val?`<tspan class="port v"> ${val}</tspan>`:''}</text>`);});
+    outs.forEach((p,i)=>{const gy=y+22+i*18+11;grips[key+'.out'+i]=[x+w,gy];
+      const [nm,cnt,cls]=p.split('|');S.push(`<text class="port" x="${x+w-9}" y="${gy+4}" text-anchor="end">${cnt?`<tspan class="cnt ${cls}" style="fill:var(--c)">${cnt}  </tspan>`:''}${nm}</text>`);});
+  };
+  const panel=(key,x,y,w,txt)=>{S.push(`<rect class="panel" x="${x}" y="${y}" width="${w}" height="22" rx="3"/><text class="ptxt" x="${x+8}" y="${y+15}">${txt}</text>`);grips[key]=[x+w,y+11];};
+  comp('sa',150,8,'Snapshot',['Source','Layers|*'],['Snap'],118);
+  comp('sb',150,96,'Snapshot',['Source','Layers|*'],['Snap'],118);
+  comp('st',150,184,'Diff Settings',['Key','Tol|auto','Ignore|2'],['Cfg'],118);
+  panel('pa',0,30,124,'tower_v12.3dm');
+  panel('pb',0,118,124,'active doc');
+  panel('pk',0,206,124,'mark');
+  comp('df',306,64,'Model Diff',['A','B','Cfg'],['Added|+1|add','Removed|−1|rem','Modified|~3|mod','Events|2|evt','Result'],150);
+  comp('fl',520,0,'Diff Filter',['Result','Kind|moved','Layer|Structure::*'],['Objects','Info'],176);
+  comp('pv',520,96,'Diff Preview',['Result','Ghost A|true'],[],176);
+  comp('as',520,176,'Assert Unchanged',['Result','Layers|Structure::*'],['Pass','Why'],176);
+  comp('rv',520,272,'Open Review ↗',['Result'],[],176,{btn:1});
+  const wire=(a,b)=>{const [x1,y1]=grips[a],[x2,y2]=grips[b],dx=Math.max(24,(x2-x1)*.5);
+    return `<path class="wire" d="M${x1},${y1} C${x1+dx},${y1} ${x2-dx},${y2} ${x2},${y2}"/>`;};
+  const W=[wire('pa','sa.in0'),wire('pb','sb.in0'),wire('pk','st.in0'),wire('sa.out0','df.in0'),wire('sb.out0','df.in1'),wire('st.out0','df.in2'),
+    wire('df.out4','fl.in0'),wire('df.out4','pv.in0'),wire('df.out4','as.in0'),wire('df.out4','rv.in0')];
+  const G=Object.values(grips).map(([x,y])=>`<circle class="grip" cx="${x}" cy="${y}" r="3.5"/>`);
+  S.push(`<text class="status" x="520" y="262">Pass = False · Slab L2 changed</text>`);
+  document.getElementById('gh').innerHTML=W.join('')+S.join('')+G.join('');
+})();
+
+/* ---------- Review mock ---------- */
+const COS=Math.cos(Math.PI/6);
+const OB=[
+ {id:'SL1',a:[0,0,0,100,60,2],st:'same'},
+ {id:'A1',a:[8,8,2,4,4,28],st:'same'},{id:'B1',a:[48,8,2,4,4,28],st:'same'},{id:'C1',a:[88,8,2,4,4,28],st:'same'},
+ {id:'A2',a:[8,48,2,4,4,28],st:'same'},{id:'B2',a:[48,48,2,4,4,28],b:[63,48,2,4,4,28],st:'move'},{id:'C2',a:[88,48,2,4,4,28],st:'same'},
+ {id:'CORE',a:[40,20,2,20,20,28],st:'same'},
+ {id:'P04',a:[72,22,2,2,20,28],b:null,st:'rem'},
+ {id:'B07',a:[8,49,27,84,2,3],st:'attr'},
+ {id:'SL2',a:[0,0,30,100,60,2],b:[0,0,30,120,60,2],st:'shape'},
+ {id:'ST01',a:null,b:[104,38,2,12,18,28],st:'add'},
+];
+OB.forEach(o=>{if(!('b' in o))o.b=o.a;});
+const ROWS=[
+ {g:'Table events',k:'evt',title:'Walls → A-WALL',sub:'layer renamed · 212 objects follow',lab:'Layer renamed',t:['CORE'],by:['layer id','certain','add'],
+  props:[['Layer id','#8c1e','#8c1e',0],['Name','Walls','A-WALL',1],['Objects','212','212 · no object rows',0]]},
+ {g:'Table events',k:'evt',title:'Structure::Columns',sub:'layer color · 6 objects (ByLayer)',lab:'Layer color',t:['A1','B1','C1','A2','B2','C2'],by:['layer id','certain','add'],
+  props:[['Color','grey 160','blue 0,120,255',1],['ByLayer objects','6','6',0],['Object edits','—','0',0]]},
+ {g:'Modified',k:'mod',title:'Column B2',sub:'moved +1.5 m X · shape same',lab:'Moved',t:['B2'],by:['GUID','certain','add'],
+  props:[['Position','4.8, 4.8, 0.2','6.3, 4.8, 0.2',1],['Transform','—','Move +1.5 m X',1],['Shape signature','a91f…','a91f…',0],['Layer','Structure::Columns','Structure::Columns',0]]},
+ {g:'Modified',k:'mod',title:'Slab L2',sub:'reshaped · area +20%',lab:'Reshaped',t:['SL2'],by:['fuzzy 0.91','needs review','mod'],why:'type ✓ · layer ✓ · bbox overlap 0.83 · area ratio 0.83 · GUID differs (re-baked)',
+  props:[['Size','10.0 × 6.0 m','12.0 × 6.0 m',1],['Area','60.0 m²','72.0 m²',1],['Layer','Structure::Slabs','Structure::Slabs',0],['GUID','#3b07…','#e03c…',1]]},
+ {g:'Modified',k:'mod',title:'Beam B-07',sub:'material S355 → GL28',lab:'Attributes',t:['B07'],by:['GUID','certain','add'],
+  props:[['Material','Steel S355','Glulam GL28',1],['Geometry','hash 77c2…','hash 77c2…',0],['Layer','Structure::Beams','Structure::Beams',0]]},
+ {g:'Added',k:'add',title:'Stair ST-01',sub:'on Architecture::Circulation',lab:'Added',t:['ST01'],
+  props:[['Layer','—','Architecture::Circulation',1],['Volume','—','6.0 m³',1]]},
+ {g:'Removed',k:'rem',title:'Partition P-04',sub:'was on Walls (now A-WALL)',lab:'Removed',t:['P04'],
+  props:[['Layer','Architecture::Walls','—',1],['Volume','1.1 m³','—',1]]},
+];
+let sel=2, mode='over', filt='all', swipeX=230; const reviewed=new Set([0]);
+const FILTERS=[['all','All',null],['evt','Events','evt'],['mod','Modified','mod'],['add','Added','add'],['rem','Removed','rem']];
+const P=(x,y,z,v)=>[(x-y)*COS*v.s+v.ox,(x+y)*.5*v.s-z*v.s+v.oy];
+function box(r,v,cls,id){const [x0,y0,z0,dx,dy,dz]=r,x1=x0+dx,y1=y0+dy,z1=z0+dz;
+  const f=pts=>pts.map(p=>P(p[0],p[1],p[2],v).map(n=>n.toFixed(1)).join(',')).join(' ');
+  return `<g class="bx ${cls}" data-id="${id}"><polygon class="fy" points="${f([[x0,y1,z0],[x1,y1,z0],[x1,y1,z1],[x0,y1,z1]])}"/><polygon class="fx" points="${f([[x1,y0,z0],[x1,y1,z0],[x1,y1,z1],[x1,y0,z1]])}"/><polygon class="ft" points="${f([[x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1]])}"/></g>`;}
+const ord=r=>r[2]*1000+(r[0]+r[3]/2)+(r[1]+r[4]/2);
+const KC={add:'c add',rem:'c rem',move:'c mod',shape:'c mod',attr:'c mod',same:'n'};
+function scene(v,which){ // which: 'over'|'only'|'A'|'B'
+  const targets=new Set(sel!=null?ROWS[sel].t:[]);
+  const extra=id=>(targets.size?(targets.has(id)?' sel':' dim'):'');
+  let solids=[],ghosts=[];
+  for(const o of OB){
+    if(which==='A'){ if(!o.a) continue; solids.push([o.a,box(o.a,v,(o.st==='add'?'n':KC[o.st])+extra(o.id),o.id)]); continue;}
+    if(which==='B'){ if(!o.b) continue; solids.push([o.b,box(o.b,v,(o.st==='rem'?'n':KC[o.st])+extra(o.id),o.id)]); continue;}
+    const faint=(which==='only'&&o.st==='same'&&!targets.has(o.id))?' faint':'';
+    if(o.b && o.st!=='rem') solids.push([o.b,box(o.b,v,KC[o.st]+extra(o.id)+faint,o.id)]);
+    if(o.st==='rem') ghosts.push(box(o.a,v,'ghost rem'+extra(o.id),o.id));
+    if(o.st==='move'||o.st==='shape'){ ghosts.push(box(o.a,v,'ghost mod'+extra(o.id),o.id));
+      if(o.st==='move'){const [ax,ay]=P(o.a[0]+2,o.a[1]+2,o.a[2]+o.a[5]+3,v),[bx,by]=P(o.b[0]+2,o.b[1]+2,o.b[2]+o.b[5]+3,v);
+        ghosts.push(`<path class="arrow" d="M${ax},${ay} L${bx-4},${by-2}" marker-end="url(#am)"/>`);}}
+  }
+  solids.sort((p,q)=>ord(p[0])-ord(q[0]));
+  return solids.map(s=>s[1]).join('')+ghosts.join('');
+}
+function drawVP(){
+  const defs=`<defs><marker id="am" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L8,4 L0,8 z" class="ahp"/></marker>
+   <clipPath id="cl"><rect x="0" y="0" width="${swipeX}" height="270"/></clipPath><clipPath id="cr"><rect x="${swipeX}" y="0" width="${420-swipeX}" height="270"/></clipPath></defs>`;
+  const big={s:2.0,ox:60*COS*2+(420-180*COS*2)/2,oy:64+14};
+  let h=defs;
+  if(mode==='over'||mode==='only') h+=scene(big,mode);
+  else if(mode==='side'){const sm=s=>({s:1.08,ox:60*COS*1.08+(210-180*COS*1.08)/2+s,oy:34.6+68});
+    h+=`<text class="plab" x="10" y="20">A · v12</text><text class="plab" x="220" y="20">B · current</text><line class="div" x1="210" y1="8" x2="210" y2="262" style="opacity:.25"/>`+scene(sm(0),'A')+scene(sm(210),'B');
+    h+=`<text class="plab" x="210" y="258" text-anchor="middle" style="font-weight:400">cameras synced</text>`;}
+  else if(mode==='swipe'){h+=`<g clip-path="url(#cl)">${scene(big,'A')}</g><g clip-path="url(#cr)">${scene(big,'B')}</g>
+    <line class="div" x1="${swipeX}" y1="0" x2="${swipeX}" y2="270"/><circle class="handle" cx="${swipeX}" cy="135" r="7"/>
+    <text class="plab" x="10" y="20">A · v12</text><text class="plab" x="410" y="20" text-anchor="end">B · current</text>`;}
+  const vp=document.getElementById('vp'); vp.innerHTML=h;
+  vp.querySelectorAll('.bx').forEach(g=>g.addEventListener('click',()=>{const id=g.dataset.id;const i=ROWS.findIndex(r=>r.t.length===1&&r.t[0]===id);if(i>=0)select(i);}));
+  document.getElementById('swipeRow').style.display=mode==='swipe'?'block':'none';
+}
+function drawList(){
+  const cnt=k=>ROWS.filter(r=>k==null||r.k===k).length;
+  document.getElementById('chips').innerHTML=FILTERS.map(([f,l,k])=>`<button class="${k||''} ${filt===f?'on':''}" data-f="${f}">${l} <b>${cnt(k)}</b></button>`).join('');
+  document.querySelectorAll('#chips button').forEach(b=>b.onclick=()=>{filt=b.dataset.f;drawList();});
+  let h='',lastG='';
+  ROWS.forEach((r,i)=>{ if(filt!=='all'&&r.k!==filt) return;
+    if(r.g!==lastG){h+=`<div class="gh4">${r.g}</div>`;lastG=r.g;}
+    h+=`<div class="li ${r.k} ${i===sel?'on':''} ${reviewed.has(i)?'rv':''}" data-i="${i}"><span class="dot"></span><span class="tt"><b>${r.title}</b><span>${r.sub}</span></span><span class="ok">${reviewed.has(i)?'✓':''}</span></div>`;});
+  const L=document.getElementById('list'); L.innerHTML=h;
+  L.querySelectorAll('.li').forEach(el=>el.onclick=()=>select(+el.dataset.i));
+  document.getElementById('pbar').style.width=(reviewed.size/ROWS.length*100)+'%';
+  document.getElementById('ptxt').textContent=`${reviewed.size} / ${ROWS.length} reviewed`;
+}
+function drawDetail(){
+  const r=ROWS[sel];
+  const by=r.by?`<span class="badge">${r.by[0]}</span><span class="pill ${r.by[2]}">${r.by[1]}</span>`:'<span class="muted">only on one side</span>';
+  document.getElementById('detail').innerHTML=`
+   <div class="dh"><span class="pill ${r.k}">${r.lab}</span><b>${r.title}</b></div>
+   <div class="mb">Matched by ${by}${r.why?`<div style="margin-top:4px">${r.why}</div>`:''}</div>
+   <table class="pt"><thead><tr><th>Property</th><th>A · v12</th><th>B · current</th></tr></thead><tbody>
+   ${r.props.map(p=>`<tr class="${p[3]?'ch':''}"><td>${p[0]}</td><td>${p[1]}</td><td>${p[2]}</td></tr>`).join('')}</tbody></table>
+   <div class="acts"><button class="pri" id="rvb">${reviewed.has(sel)?'↺ Unmark':'✓ Mark reviewed'}</button><button>Zoom to</button><button>Isolate</button>${r.by&&r.by[0].startsWith('fuzzy')?'<button class="ghostb">Unlink pair</button>':''}${r.k==='evt'?'<button>Select 212 objects</button>':''}</div>`;
+  document.getElementById('rvb').onclick=toggleReviewed;
+}
+function select(i){sel=i;render();}
+function toggleReviewed(){ if(reviewed.has(sel)) reviewed.delete(sel); else {reviewed.add(sel); const nx=ROWS.findIndex((_,j)=>j>sel&&!reviewed.has(j)); if(nx>=0) sel=nx;} render(); }
+function render(){drawVP();drawList();drawDetail();}
+document.querySelectorAll('#modes button').forEach(b=>b.onclick=()=>{mode=b.dataset.m;document.querySelectorAll('#modes button').forEach(x=>x.classList.toggle('on',x===b));drawVP();});
+document.getElementById('swipe').oninput=e=>{swipeX=+e.target.value;drawVP();};
+document.addEventListener('keydown',e=>{if(e.key==='j'){sel=Math.min(ROWS.length-1,sel+1);render();}else if(e.key==='k'){sel=Math.max(0,sel-1);render();}else if(e.key===' '){e.preventDefault();toggleReviewed();}});
+render();
+</script>
+</body></html>

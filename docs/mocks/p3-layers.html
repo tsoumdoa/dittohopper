@@ -1,0 +1,220 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Layers</title>
+<style>
+*{box-sizing:border-box}
+.wrap{font-size:14px;line-height:1.5;color:var(--foreground)}
+.eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-foreground);font-weight:600;margin-bottom:2px}
+h2{font-size:19px;line-height:1.25;margin:0 0 6px;font-weight:650;letter-spacing:-.01em}
+h3{font-size:14px;margin:22px 0 8px;font-weight:600}
+p{margin:0 0 10px}
+.lede{color:var(--muted-foreground);max-width:66ch;margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+.muted{color:var(--muted-foreground)}
+.add{--c:var(--success)}.rem{--c:var(--destructive)}.mod{--c:var(--warning)}.evt{--c:var(--info)}.same{--c:var(--muted-foreground)}
+.pill{display:inline-flex;align-items:center;padding:0 7px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;color:var(--c);background:color-mix(in srgb,var(--c) 15%,transparent);line-height:18px}
+.pipe{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 14px}
+.pipe .st{font-size:12.5px;padding:5px 10px;border-radius:8px;border:1px solid var(--border);background:var(--card)}
+.pipe .st b{color:var(--primary);margin-right:4px}
+.pipe .st.hl{border-color:color-mix(in srgb,var(--primary) 60%,transparent);background:color-mix(in srgb,var(--primary) 10%,transparent)}
+.pipe .ar{color:var(--muted-foreground);font-size:12px}
+#tree{width:100%;height:auto;display:block}
+#tree .row{fill:var(--card);stroke:var(--border)}
+#tree .row.gone{fill:color-mix(in srgb,var(--destructive) 8%,transparent);stroke:color-mix(in srgb,var(--destructive) 50%,transparent);stroke-dasharray:3 2}
+#tree .row.new{fill:color-mix(in srgb,var(--success) 8%,transparent);stroke:color-mix(in srgb,var(--success) 55%,transparent)}
+#tree .nm{fill:var(--foreground);font-size:12.5px}
+#tree .nm.top{font-weight:650}
+#tree .id{fill:var(--muted-foreground);font-size:10px;font-family:var(--font-mono)}
+#tree .hd{fill:var(--muted-foreground);font-size:10.5px;font-weight:700;letter-spacing:.08em}
+#tree .ln{fill:none;stroke-width:1.6}
+#tree .ln.same{stroke:color-mix(in srgb,var(--muted-foreground) 45%,transparent)}
+#tree .ln.evt{stroke:var(--info)}
+#tree .ln.mod{stroke:var(--warning)}
+#tree .ln.rem{stroke:var(--destructive)}
+#tree .ln.add{stroke:var(--success)}
+#tree .ln.dash{stroke-dasharray:5 3}
+#tree .pb{fill:color-mix(in srgb,var(--c) 16%,transparent)}
+#tree .pt{fill:var(--c);font-size:10.5px;font-weight:650}
+#tree .note{font-size:11px;fill:var(--destructive);paint-order:stroke;stroke:var(--card);stroke-width:5px;stroke-linejoin:round}
+#tree .note.g{fill:var(--success)}
+.legend{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:11.5px;color:var(--muted-foreground);margin:8px 0 0}
+.legend svg{vertical-align:middle;margin-right:5px}
+.lmc{margin-top:12px;font-size:12.5px;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.lmc .lab{color:var(--muted-foreground);font-weight:600;margin-right:4px}
+.lmc .c{font-family:var(--font-mono);font-size:11px;padding:2px 7px;border-radius:5px;border:1px solid var(--border);background:color-mix(in srgb,var(--muted) 50%,transparent)}
+.lmc .ar{color:var(--muted-foreground)}
+
+.vs{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+@media (max-width:600px){.vs{grid-template-columns:1fr}}
+.vs .card{padding:14px 16px}
+.vs h4{margin:0 0 8px;font-size:13px;font-weight:650;display:flex;justify-content:space-between;align-items:baseline}
+.vs h4 span{font-weight:500;color:var(--muted-foreground);font-size:12px}
+.nl{list-style:none;margin:0;padding:0;font-family:var(--font-mono);font-size:11px;color:var(--muted-foreground)}
+.nl li{padding:3px 0;border-top:1px solid color-mix(in srgb,var(--border) 70%,transparent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nl li:first-child{border-top:0}
+.nl li.more{font-style:italic;opacity:.75}
+.nl .k{color:var(--warning)}
+.nl .k.r{color:var(--destructive)}
+.cl{list-style:none;margin:0;padding:0}
+.cl li{display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:start;padding:6px 0;border-top:1px solid var(--border);font-size:12.5px;line-height:1.35}
+.cl li:first-child{border-top:0}
+.cl li .sub{display:block;color:var(--muted-foreground);font-size:11.5px}
+.cl li .pill{margin-top:1px;min-width:62px;justify-content:center}
+.rules{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:600px){.rules{grid-template-columns:1fr}}
+.rules .card{padding:14px 16px}
+.rules .k{font-size:13.5px;font-weight:650;margin-bottom:4px}
+.rules .d{font-size:12.5px;color:var(--muted-foreground);line-height:1.45}
+.rules code{font-family:var(--font-mono);font-size:11.5px;color:var(--foreground);background:color-mix(in srgb,var(--muted) 60%,transparent);padding:0 4px;border-radius:4px}
+.tax{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+@media (max-width:640px){.tax{grid-template-columns:1fr 1fr}}
+.tax .card{padding:12px 14px}
+.tax .g{font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;color:var(--muted-foreground);margin-bottom:6px}
+.tax label{display:flex;gap:7px;align-items:center;font-size:12.5px;padding:2px 0}
+.tax .box{width:13px;height:13px;border-radius:3px;border:1.5px solid var(--muted-foreground);display:inline-grid;place-items:center;font-size:10px;line-height:1;flex:none}
+.tax .on .box{background:var(--primary);border-color:var(--primary);color:var(--primary-foreground)}
+.tax .off{color:var(--muted-foreground)}
+.tax .hint{font-size:11px;color:var(--muted-foreground);margin-left:20px;margin-top:-2px;line-height:1.3}
+</style></head><body>
+<div class="wrap">
+  <div class="eyebrow">Question 3</div>
+  <h2>How do you track layer renames, layer moves and the like?</h2>
+  <p class="lede">Treat layers as their own table to diff, with their own IDs. The same goes for blocks, materials, linetypes and groups. Diff those tables first to build an A→B mapping, then compare every object <b>through</b> that mapping.</p>
+
+  <div class="pipe">
+    <span class="st hl"><b>1</b>Diff tables</span><span class="ar">→</span>
+    <span class="st hl"><b>2</b>Build layer map A→B</span><span class="ar">→</span>
+    <span class="st"><b>3</b>Match objects</span><span class="ar">→</span>
+    <span class="st"><b>4</b>Compare via map</span><span class="ar">→</span>
+    <span class="st hl"><b>5</b>Collapse to root causes</span>
+  </div>
+
+  <div class="card" style="padding:14px 16px">
+    <svg id="tree" viewBox="0 0 712 360" role="img" aria-label="Layer table of model A mapped to model B, showing a rename, color change, re-parent, new layer, split, and deleted layer"></svg>
+    <div class="legend">
+      <span><svg width="26" height="8"><line x1="0" y1="4" x2="26" y2="4" stroke="var(--info)" stroke-width="1.6"/></svg>matched by layer ID</span>
+      <span><svg width="26" height="8"><line x1="0" y1="4" x2="26" y2="4" stroke="var(--info)" stroke-width="1.6" stroke-dasharray="5 3"/></svg>inferred from where the objects went</span>
+      <span><svg width="26" height="8"><line x1="0" y1="4" x2="26" y2="4" stroke="var(--muted-foreground)" stroke-opacity=".5" stroke-width="1.6"/></svg>unchanged</span>
+    </div>
+    <div class="lmc"><span class="lab">Layer matching order:</span>
+      <span class="c">Layer.Id</span><span class="ar">→</span><span class="c">full path</span><span class="ar">→</span><span class="c">unique name</span><span class="ar">→</span><span class="c">≥60% of its matched objects</span><span class="ar">→</span><span class="c">added / removed</span></div>
+  </div>
+
+  <h3>Collapse to root causes: 6 rows instead of 362</h3>
+  <div class="vs">
+    <div class="card">
+      <h4>Per-object, naive <span>362 rows</span></h4>
+      <ul class="nl">
+        <li><span class="k">~</span> Wall-0001 layer Walls → A-WALL</li>
+        <li><span class="k">~</span> Wall-0002 layer Walls → A-WALL</li>
+        <li><span class="k">~</span> Wall-0003 layer Walls → A-WALL</li>
+        <li class="more">… 209 more like this</li>
+        <li><span class="k">~</span> Door-0001 display color changed</li>
+        <li class="more">… 35 more like this</li>
+        <li><span class="k">~</span> Chair-0001 layer Architecture::Furniture → Interior::Furniture</li>
+        <li class="more">… 87 more like this</li>
+        <li><span class="k">~</span> Slab-01 layer Slabs → Slabs-L01</li>
+        <li class="more">… 11 more like this</li>
+        <li><span class="k r">−</span> 14 objects removed (were on Temp)</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Grouped by cause <span>6 rows, each expandable</span></h4>
+      <ul class="cl">
+        <li><span class="pill evt">rename</span><span><b>Walls → A-WALL</b><span class="sub">212 objects follow · 0 object edits</span></span></li>
+        <li><span class="pill mod">layer</span><span><b>Doors · color</b><span class="sub">36 objects look different (ByLayer) · 0 object edits</span></span></li>
+        <li><span class="pill evt">move</span><span><b>Furniture → under Interior</b><span class="sub">88 objects follow</span></span></li>
+        <li><span class="pill add">new</span><span><b>Interior</b><span class="sub">new parent layer</span></span></li>
+        <li><span class="pill evt">split</span><span><b>Slabs → L01 (7) + L02 (5)</b><span class="sub">inferred · confidence 0.92</span></span></li>
+        <li><span class="pill rem">deleted</span><span><b>Temp</b><span class="sub">14 objects removed with it</span></span></li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Rules behind it</h3>
+  <div class="rules">
+    <div class="card"><div class="k">A rename is not an object change</div><div class="d">Objects reference a layer by ID, not by name. Compare <code>map(A.layer)</code> with <code>B.layer</code>. A renamed or re-parented layer then produces zero object rows.</div></div>
+    <div class="card"><div class="k">A ByLayer change belongs to the layer</div><div class="d">If an object's color, material or linetype is set ByLayer, the object itself didn't change. Report it once on the layer, and offer an "effective appearance" view for people who care what it looks like.</div></div>
+    <div class="card"><div class="k">Blocks work the same way</div><div class="d">Editing a definition gives one row: <i>"Window-A changed · 48 instances"</i>. An instance only gets its own row when its own transform or attributes change.</div></div>
+    <div class="card"><div class="k">No shared IDs? Infer them</div><div class="d">For rebuilt files, match by full path, then by name, then by where the matched objects went. If 95% of <code>A::Slabs</code> now sits on <code>B::Floor</code>, that's a rename. Mark it as inferred.</div></div>
+  </div>
+
+  <h3>What counts as a change (defaults, editable in Diff Settings)</h3>
+  <div class="tax">
+    <div class="card"><div class="g">Geometry</div>
+      <label class="on"><span class="box">✓</span>Placement</label><div class="hint">rigid move / rotate / mirror; reported as a transform</div>
+      <label class="on"><span class="box">✓</span>Shape</label><div class="hint">everything else; Δ area / volume / length</div></div>
+    <div class="card"><div class="g">Organization</div>
+      <label class="on"><span class="box">✓</span>Layer</label>
+      <label class="on"><span class="box">✓</span>Block definition</label>
+      <label class="on"><span class="box">✓</span>Group membership</label>
+      <label class="off"><span class="box"></span>Display order</label></div>
+    <div class="card"><div class="g">Appearance</div>
+      <label class="on"><span class="box">✓</span>Color</label>
+      <label class="on"><span class="box">✓</span>Material</label>
+      <label class="on"><span class="box">✓</span>Linetype</label>
+      <label class="off"><span class="box"></span>Print width</label><div class="hint">object's own value vs ByLayer</div></div>
+    <div class="card"><div class="g">Data</div>
+      <label class="on"><span class="box">✓</span>Name</label>
+      <label class="on"><span class="box">✓</span>User text, per key</label>
+      <label class="off"><span class="box"></span>Plugin user data</label>
+      <label class="off"><span class="box"></span>Render meshes</label><div class="hint">always noisy</div></div>
+  </div>
+</div>
+
+<script>
+const A=[
+ {n:'Architecture',id:'3f2a',d:0},
+ {n:'Walls',id:'8c1e',d:1,c:212},
+ {n:'Doors',id:'41b7',d:1,c:36},
+ {n:'Furniture',id:'d09a',d:1,c:88},
+ {n:'Structure',id:'77e0',d:0},
+ {n:'Columns',id:'a5c3',d:1,c:64},
+ {n:'Slabs',id:'2b98',d:1,c:12},
+ {n:'Temp',id:'e611',d:0,c:14,gone:1},
+];
+const B=[
+ {n:'Architecture',id:'3f2a',d:0},
+ {n:'A-WALL',id:'8c1e',d:1,tag:['evt','renamed']},
+ {n:'Doors',id:'41b7',d:1,tag:['mod','color']},
+ {n:'Interior',id:'5d4f',d:0,tag:['add','new'],nw:1},
+ {n:'Furniture',id:'d09a',d:1,tag:['evt','re-parented']},
+ {n:'Structure',id:'77e0',d:0},
+ {n:'Columns',id:'a5c3',d:1},
+ {n:'Slabs-L01',id:'91aa',d:1,tag:['evt','split · 58%']},
+ {n:'Slabs-L02',id:'c3e2',d:1,tag:['evt','split · 42%']},
+];
+const L=[[0,0,'same'],[1,1,'evt'],[2,2,'mod'],[3,4,'evt'],[4,5,'same'],[5,6,'same'],[6,7,'evt',1],[6,8,'evt',1]];
+const Y0=30,PITCH=36,H=30,IND=18,AX=0,BX=482,W=230;
+const yc=i=>Y0+i*PITCH+H/2;
+let s=`<text class="hd" x="0" y="16">MODEL A · LAYERS</text><text class="hd" x="${BX}" y="16">MODEL B · LAYERS</text><text class="hd" x="356" y="16" text-anchor="middle">MAPPING</text>`;
+// links first
+for(const [a,b,k,dash] of L){
+  const x1=AX+W, y1=yc(a), x2=BX+B[b].d*IND, y2=yc(b), mx=(x1+x2)/2;
+  s+=`<path class="ln ${k}${dash?' dash':''}" d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}"/>`;
+}
+// deleted Temp
+{const y=yc(7); s+=`<path class="ln rem dash" d="M${W},${y} L${W+40},${y}"/><text class="note" x="${W+46}" y="${y+4}">✕ deleted (14 obj)</text>`;}
+// new Interior
+{const y=yc(3); s+=`<path class="ln add dash" d="M${BX-44},${y} L${BX},${y}"/><text class="note g" x="${BX-50}" y="${y+4}" text-anchor="end">new layer +</text>`;}
+function rowSvg(r,i,x0,side){
+  const x=x0+r.d*IND, w=W-r.d*IND, y=Y0+i*PITCH;
+  let cls='row'+(r.gone?' gone':'')+(r.nw?' new':'');
+  let out=`<rect class="${cls}" x="${x}" y="${y}" width="${w}" height="${H}" rx="6"/>`;
+  out+=`<text class="nm${r.d===0?' top':''}" x="${x+10}" y="${y+19.5}">${r.n}</text>`;
+  const nw=r.n.length*(r.d===0?7.6:7.1);
+  if(side==='A'){
+    out+=`<text class="id" x="${x+w-10}" y="${y+19}" text-anchor="end">#${r.id}${r.c?' · '+r.c+' obj':''}</text>`;
+  }else{
+    out+=`<text class="id bid" data-i="${i}" x="${x+14+nw}" y="${y+19}">#${r.id}</text>`;
+    if(r.tag){const t=r.tag[1], tw=t.length*6.1+14;
+      out+=`<g class="${r.tag[0]}"><rect class="pb" x="${x+w-8-tw}" y="${y+6}" width="${tw}" height="18" rx="9"/><text class="pt" x="${x+w-8-tw/2}" y="${y+18.5}" text-anchor="middle">${t}</text></g>`;}
+  }
+  return out;
+}
+A.forEach((r,i)=>s+=rowSvg(r,i,AX,'A'));
+B.forEach((r,i)=>s+=rowSvg(r,i,BX,'B'));
+document.getElementById('tree').innerHTML=s;
+document.querySelectorAll('#tree .bid').forEach(t=>{const nm=t.previousElementSibling;try{const b=nm.getBBox();t.setAttribute('x',b.x+b.width+7);}catch(e){}});
+</script>
+</body></html>

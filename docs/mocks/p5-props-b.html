@@ -1,0 +1,162 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Object diff</title>
+<style>
+*{box-sizing:border-box}
+.wrap{font-size:14px;line-height:1.5;color:var(--foreground)}
+h3{font-size:14px;margin:22px 0 8px;font-weight:600}
+h3:first-child{margin-top:2px}
+h3 .lv{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--primary);margin-right:6px}
+p{margin:0 0 10px}
+.sub{color:var(--muted-foreground);font-size:12.5px;margin:-4px 0 10px;max-width:68ch}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px}
+.mono{font-family:var(--font-mono);font-size:11.5px}
+.muted{color:var(--muted-foreground)}
+.add{--c:var(--success)}.rem{--c:var(--destructive)}.mod{--c:var(--warning)}.evt{--c:var(--info)}
+.pill{display:inline-flex;align-items:center;padding:0 7px;border-radius:999px;font-size:10.5px;font-weight:650;white-space:nowrap;color:var(--c);background:color-mix(in srgb,var(--c) 15%,transparent);line-height:18px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:620px){.two{grid-template-columns:1fr}}
+.oc{padding:14px 14px 12px}
+.oc .hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:2px}
+.oc .hd b{font-size:14px}
+.oc .meta{font-size:11.5px;color:var(--muted-foreground);margin-bottom:10px}
+.sec{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;color:var(--muted-foreground);margin:10px 0 4px}
+.pr{display:grid;grid-template-columns:76px minmax(0,1fr);gap:8px;padding:5px 0;border-top:1px solid var(--border);font-size:12px;align-items:baseline}
+.pr:first-of-type{border-top:0}
+.pr .k{color:var(--muted-foreground)}
+.pr .v{font-family:var(--font-mono);font-size:11px;line-height:1.55}
+.pr .v .f{color:var(--muted-foreground);text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--muted-foreground) 60%,transparent)}
+.pr .v .t{color:var(--warning);font-weight:600}
+.pr .v .a{color:var(--success);font-weight:600}
+.pr .v .r{color:var(--destructive);text-decoration:line-through}
+.pr .v .w{color:var(--warning);font-family:var(--font-sans);font-size:11px;font-weight:600;display:block}
+.side{margin-top:8px;padding:8px 10px;border-radius:8px;font-size:11.5px;line-height:1.45;background:color-mix(in srgb,var(--info) 10%,transparent);border:1px solid color-mix(in srgb,var(--info) 30%,transparent)}
+.side b{color:var(--info)}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;border:1px solid var(--muted-foreground)}
+.unch{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}
+.unch span{font-size:10.5px;padding:1px 6px;border-radius:5px;background:color-mix(in srgb,var(--success) 10%,transparent);color:color-mix(in srgb,var(--success) 85%,var(--foreground))}
+.unch span::before{content:"✓ ";font-weight:700}
+
+#sk{width:100%;height:auto;display:block}
+#sk .node{fill:var(--foreground)}
+#sk .lb{font-size:12px;fill:var(--foreground)}
+#sk .lb .n{fill:var(--muted-foreground);font-size:11px}
+#sk .stay{fill:color-mix(in srgb,var(--muted-foreground) 18%,transparent)}
+#sk .ok{fill:color-mix(in srgb,var(--info) 55%,transparent)}
+#sk .bad{fill:color-mix(in srgb,var(--destructive) 70%,transparent)}
+#sk .bl{font-size:11px;font-weight:650;paint-order:stroke;stroke:var(--card);stroke-width:4px;stroke-linejoin:round}
+#sk .bl.o{fill:var(--info)} #sk .bl.b{fill:var(--destructive)} #sk .bl.s{fill:var(--muted-foreground);font-weight:500}
+#sk .hd{font-size:10.5px;font-weight:700;letter-spacing:.08em;fill:var(--muted-foreground)}
+
+.vm{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+@media (max-width:620px){.vm{grid-template-columns:1fr}}
+.vm .card{padding:10px 12px}
+.vm svg{width:100%;height:auto;display:block;border-radius:6px;background:color-mix(in srgb,var(--muted) 55%,transparent);margin-bottom:6px}
+.vm .k{font-size:12.5px;font-weight:650}
+.vm .d{font-size:11.5px;color:var(--muted-foreground);line-height:1.4}
+
+.det{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;list-style:none;margin:0;padding:0}
+@media (max-width:620px){.det{grid-template-columns:1fr}}
+.det li{display:grid;grid-template-columns:18px 1fr;gap:6px;font-size:12.5px;line-height:1.4;padding:6px 0;border-top:1px solid var(--border)}
+.det li .i{color:var(--warning);font-weight:700}
+.det li b{font-weight:600}
+.det li span.s{display:block;color:var(--muted-foreground);font-size:11.5px}
+</style></head><body>
+<div class="wrap">
+  <h3><span class="lv">Level 3</span>One object: changed properties first, unchanged ones confirmed</h3>
+  <p class="sub">Showing "13 properties unchanged" with checkmarks is what gives confidence. Leaving them out just makes people wonder whether they were checked.</p>
+  <div class="two">
+    <div class="card oc">
+      <div class="hd"><span class="pill mod">⚠ check</span><b>Wall W-042</b></div>
+      <div class="meta">1 of 23 in set "layer · Walls → Default" · matched by GUID</div>
+      <div class="sec">Changed · 1</div>
+      <div class="pr"><span class="k">Layer</span><span class="v"><span class="f">Architecture::Walls</span> → <span class="t">Default</span><span class="w">Outside scope · moved to Default</span></span></div>
+      <div class="side"><b>Side effect:</b> the color and material are ByLayer, so the wall now <i>looks</i> different (<span class="sw" style="background:#9a9a9a"></span> → <span class="sw" style="background:#111"></span>) even though its own settings didn't change.</div>
+      <div class="sec">Unchanged · 13</div>
+      <div class="unch"><span>Geometry</span><span>Position</span><span>Name</span><span>Color src</span><span>Material src</span><span>Linetype</span><span>Print width</span><span>Group</span><span>mark</span><span>fire_rating</span><span>Visibility</span><span>Lock</span><span>Display order</span></div>
+    </div>
+    <div class="card oc">
+      <div class="hd"><span class="pill evt">expected</span><b>Panel P-117</b></div>
+      <div class="meta">1 of 48 in set "Facade panels re-typed" · matched by GUID</div>
+      <div class="sec">Changed · 4</div>
+      <div class="pr"><span class="k">Shape</span><span class="v">area <span class="f">2.40 m²</span> → <span class="t">2.52 m²</span> <span class="muted">(+5%)</span></span></div>
+      <div class="pr"><span class="k">Layer</span><span class="v"><span class="f">Facade::Panels</span> → <span class="t">Facade::Panels-B</span></span></div>
+      <div class="pr"><span class="k">User text</span><span class="v">~ panel_type <span class="f">A</span> → <span class="t">B</span><br>+ <span class="a">supplier = FX-02</span><br>− <span class="r">temp_note</span></span></div>
+      <div class="pr"><span class="k">Placement</span><span class="v"><span class="muted">unchanged</span> · shape edited in place</span></div>
+      <div class="sec">Unchanged · 9</div>
+      <div class="unch"><span>Name</span><span>Color src</span><span>Material</span><span>Linetype</span><span>Group</span><span>mark</span><span>Visibility</span><span>Lock</span><span>Block</span></div>
+    </div>
+  </div>
+
+  <h3>Layer changes specifically: a flow view</h3>
+  <p class="sub">Most objects stay where they were, shown as faint bands. Objects that move layers stand out, and an accidental move into Default is obvious at a glance.</p>
+  <div class="card" style="padding:12px 14px">
+    <svg id="sk" viewBox="0 0 712 318" role="img" aria-label="Layer flow: 264 panels stay on Facade::Panels and 48 move to Facade::Panels-B as intended; 189 walls stay on Architecture::Walls and 23 move to Default unexpectedly."></svg>
+    <div class="muted" style="font-size:11.5px;margin-top:4px">The other 5 layers keep all their objects and are collapsed here. In the plugin, clicking a band would select those objects in Rhino.</div>
+  </div>
+
+  <h3>In the viewport: color by <i>what</i> changed</h3>
+  <div class="vm">
+    <div class="card">
+      <svg viewBox="0 0 200 110" aria-label="Status mode">
+        <rect x="14" y="20" width="40" height="70" rx="2" fill="color-mix(in srgb,var(--muted-foreground) 25%,transparent)" stroke="color-mix(in srgb,var(--muted-foreground) 60%,transparent)"/>
+        <rect x="62" y="20" width="40" height="70" rx="2" fill="color-mix(in srgb,var(--warning) 55%,transparent)" stroke="var(--warning)"/>
+        <rect x="110" y="20" width="40" height="70" rx="2" fill="color-mix(in srgb,var(--muted-foreground) 25%,transparent)" stroke="color-mix(in srgb,var(--muted-foreground) 60%,transparent)"/>
+        <rect x="158" y="20" width="30" height="70" rx="2" fill="color-mix(in srgb,var(--success) 55%,transparent)" stroke="var(--success)"/>
+      </svg>
+      <div class="k">Status</div><div class="d">Added, removed, modified or unchanged. The default.</div></div>
+    <div class="card">
+      <svg viewBox="0 0 200 110" aria-label="Property mode">
+        <rect x="14" y="20" width="40" height="70" rx="2" fill="color-mix(in srgb,var(--muted-foreground) 25%,transparent)" stroke="color-mix(in srgb,var(--muted-foreground) 60%,transparent)"/>
+        <rect x="62" y="20" width="40" height="70" rx="2" fill="color-mix(in srgb,var(--info) 55%,transparent)" stroke="var(--info)"/>
+        <rect x="110" y="20" width="40" height="70" rx="2" fill="color-mix(in srgb,var(--chart-5,var(--warning)) 55%,transparent)" stroke="var(--chart-5,var(--warning))"/>
+        <rect x="158" y="20" width="30" height="70" rx="2" fill="color-mix(in srgb,var(--warning) 55%,transparent)" stroke="var(--warning)"/>
+        <text x="82" y="104" text-anchor="middle" font-size="9" fill="var(--muted-foreground)">layer</text>
+        <text x="130" y="104" text-anchor="middle" font-size="9" fill="var(--muted-foreground)">color</text>
+        <text x="173" y="104" text-anchor="middle" font-size="9" fill="var(--muted-foreground)">shape</text>
+      </svg>
+      <div class="k">By property</div><div class="d">One color per changed property, so "only layers changed here" is visible at a glance.</div></div>
+    <div class="card">
+      <svg viewBox="0 0 200 110" aria-label="Layer from-to mode">
+        <rect x="30" y="20" width="60" height="70" rx="2" fill="#e8923a" stroke="#3b7ddd" stroke-width="5"/>
+        <rect x="110" y="20" width="60" height="70" rx="2" fill="#e8923a" stroke="#3b7ddd" stroke-width="5"/>
+        <text x="100" y="104" text-anchor="middle" font-size="9" fill="var(--muted-foreground)">fill = B layer · halo = A layer</text>
+      </svg>
+      <div class="k">Layer from → to</div><div class="d">The fill uses the new layer's color and a halo uses the old one, so you can see "Panels (blue) → Panels-B (orange)" on the object itself.</div></div>
+  </div>
+
+  <h3>Accidental-change detectors (each flags a change set)</h3>
+  <ul class="det">
+    <li><span class="i">⚠</span><span><b>Outside declared scope</b><span class="s">any change on layers you didn't say you'd touch</span></span></li>
+    <li><span class="i">⚠</span><span><b>Moved to Default / current layer</b><span class="s">a classic result of having the wrong layer active</span></span></li>
+    <li><span class="i">⚠</span><span><b>Tiny nudges</b><span class="s">moves smaller than ~10× tolerance, e.g. a gumball or arrow-key slip</span></span></li>
+    <li><span class="i">⚠</span><span><b>ByLayer → override</b><span class="s">color, material or linetype set directly on the object</span></span></li>
+    <li><span class="i">⚠</span><span><b>Duplicates</b><span class="s">an added object with the same geometry hash as an existing one</span></span></li>
+    <li><span class="i">⚠</span><span><b>Edits on locked or hidden layers</b><span class="s">those layers were locked or hidden in A, so how did anything change there?</span></span></li>
+    <li><span class="i">⚠</span><span><b>Lone deletions</b><span class="s">a few objects removed from a layer where nothing else changed</span></span></li>
+    <li><span class="i">⚠</span><span><b>Mass identical change</b><span class="s">the same change on many objects across unrelated layers (select-all)</span></span></li>
+  </ul>
+</div>
+<script>
+(function(){
+  const k=.45, LX=190, RX=480, NW=8, T=24;
+  const left=[{n:'Facade::Panels',c:312},{n:'Architecture::Walls',c:212}];
+  const right=[{n:'Facade::Panels',c:264},{n:'Facade::Panels-B',c:48,tag:'+48'},{n:'Architecture::Walls',c:189},{n:'Default',c:23,tag:'+23'}];
+  const flows=[[0,0,264,'stay'],[0,1,48,'ok'],[1,2,189,'stay'],[1,3,23,'bad']];
+  let y=T; left.forEach(n=>{n.y=y;n.h=n.c*k;y+=n.h+22;});
+  y=T; right.forEach((n,i)=>{n.y=y;n.h=n.c*k;y+=n.h+(i===0||i===2?8:22);});
+  const lo=left.map(n=>n.y), ro=right.map(n=>n.y);
+  let s=`<text class="hd" x="${LX}" y="14" text-anchor="end">MODEL A</text><text class="hd" x="${RX+NW}" y="14">MODEL B</text>`;
+  const mx=(LX+NW+RX)/2;
+  for(const [a,b,c,cls] of flows){const h=c*k,y1=lo[a],y2=ro[b];lo[a]+=h;ro[b]+=h;const x1=LX+NW,x2=RX;
+    s+=`<path class="${cls}" d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2} L${x2},${y2+h} C${mx},${y2+h} ${mx},${y1+h} ${x1},${y1+h} Z"/>`;
+    const ym=(y1+y2)/2+h/2+4;
+    if(cls==='ok') s+=`<text class="bl o" x="${mx}" y="${ym}" text-anchor="middle">48 · intended (in scope)</text>`;
+    if(cls==='bad') s+=`<text class="bl b" x="${mx}" y="${ym+16}" text-anchor="middle">23 · ⚠ unexpected</text>`;
+    if(cls==='stay') s+=`<text class="bl s" x="${mx}" y="${(y1+y2)/2+h/2+4}" text-anchor="middle">${c} stay</text>`;
+  }
+  left.forEach(n=>{s+=`<rect class="node" x="${LX}" y="${n.y}" width="${NW}" height="${n.h}" rx="2"/><text class="lb" x="${LX-8}" y="${n.y+n.h/2+4}" text-anchor="end">${n.n} <tspan class="n">${n.c}</tspan></text>`;});
+  right.forEach(n=>{const bad=n.n==='Default';s+=`<rect class="node" x="${RX}" y="${n.y}" width="${NW}" height="${Math.max(n.h,3)}" rx="2" ${bad?'style="fill:var(--destructive)"':''}/><text class="lb" x="${RX+NW+8}" y="${n.y+n.h/2+4}">${n.n} <tspan class="n">${n.tag||n.c}</tspan>${bad?' <tspan style="fill:var(--destructive);font-weight:650">⚠</tspan>':''}</text>`;});
+  document.getElementById('sk').innerHTML=s;
+})();
+</script>
+</body></html>

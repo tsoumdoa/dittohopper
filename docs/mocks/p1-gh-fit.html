@@ -1,0 +1,149 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GH fit</title>
+<style>
+*{box-sizing:border-box}
+.wrap{font-size:14px;line-height:1.5;color:var(--foreground)}
+.eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-foreground);font-weight:600;margin-bottom:2px}
+h2{font-size:19px;line-height:1.25;margin:0 0 6px;font-weight:650;letter-spacing:-.01em}
+h3{font-size:14px;margin:22px 0 8px;font-weight:600}
+p{margin:0 0 10px}
+.lede{color:var(--muted-foreground);max-width:64ch;margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+.muted{color:var(--muted-foreground)}
+.add{--c:var(--success)}.rem{--c:var(--destructive)}.mod{--c:var(--warning)}.evt{--c:var(--info)}.same{--c:var(--muted-foreground)}
+.verdict{padding:14px 16px;border-radius:var(--radius);background:color-mix(in srgb,var(--primary) 9%,transparent);border:1px solid color-mix(in srgb,var(--primary) 30%,transparent);margin:0 0 14px;font-size:14px}
+.verdict b{font-weight:650}
+.arch{width:100%;height:auto;display:block;margin:6px 0 10px}
+.arch .box{fill:var(--card);stroke:var(--border)}
+.arch .core{fill:color-mix(in srgb,var(--primary) 6%,transparent);stroke:color-mix(in srgb,var(--primary) 50%,transparent)}
+.arch .step{fill:var(--card);stroke:var(--border)}
+.arch .t{fill:var(--foreground);font-size:13px;font-weight:600}
+.arch .s{fill:var(--muted-foreground);font-size:11.5px}
+.arch .m{fill:var(--muted-foreground);font-size:11px;font-family:var(--font-mono)}
+.arch .cap{fill:var(--primary);font-size:10.5px;font-weight:700;letter-spacing:.08em}
+.arch .num{fill:var(--primary)}
+.arch .numt{fill:var(--primary-foreground);font-size:11px;font-weight:700}
+.arch .wire{fill:none;stroke:var(--muted-foreground);stroke-width:1.4}
+.arch .ahp{fill:var(--muted-foreground)}
+.arch .tag{font-size:11px;font-weight:600}
+.arch .bar{fill:var(--c)}
+.arch .tc{fill:var(--c)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media (max-width:560px){.grid2,.grid3{grid-template-columns:1fr}}
+.card h4{margin:0 0 6px;font-size:13.5px;font-weight:650;display:flex;align-items:center;gap:8px}
+.card h4 .dot{width:9px;height:9px;border-radius:3px;background:var(--c)}
+ul.ticks{list-style:none;margin:0;padding:0}
+ul.ticks li{position:relative;padding-left:16px;margin:7px 0 0;font-size:13px;line-height:1.45}
+ul.ticks li::before{content:"";position:absolute;left:2px;top:7px;width:6px;height:6px;border-radius:50%;background:var(--c)}
+.src .card{padding:14px 16px}
+.src .k{font-size:13.5px;font-weight:650;margin-bottom:2px}
+.src .d{font-size:12.5px;color:var(--muted-foreground);line-height:1.45}
+.src .ex{margin-top:8px;font-family:var(--font-mono);font-size:11.5px;color:var(--foreground);opacity:.85}
+</style></head><body>
+<div class="wrap">
+  <div class="eyebrow">Question 1</div>
+  <h2>Does it even make sense as a Grasshopper plugin?</h2>
+  <p class="lede">Partly. GH works well for running diffs automatically and as the first thing you ship. It's a poor place to <i>review</i> 300 changes. Keep the diff engine free of any UI so GH and a Rhino panel can share it.</p>
+
+  <div class="verdict"><b>Suggested shape:</b> one engine (a plain .NET library on RhinoCommon) with GH components first (v0), a dockable Rhino panel for review next (v1), and headless runs later.</div>
+
+  <svg class="arch" viewBox="0 0 712 316" role="img" aria-label="Architecture: Model A and Model B feed a diff core with five steps, which feeds three shells: Grasshopper components, a Rhino panel, and headless runs.">
+    <defs><marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" class="ahp"/></marker></defs>
+
+    <!-- inputs -->
+    <rect class="box" x="1" y="52" width="134" height="62" rx="8"/>
+    <text class="t" x="15" y="77">Model A</text>
+    <text class="m" x="15" y="97">tower_v12.3dm</text>
+    <rect class="box" x="1" y="146" width="134" height="62" rx="8"/>
+    <text class="t" x="15" y="171">Model B</text>
+    <text class="m" x="15" y="191">active document</text>
+    <text class="s" x="1" y="238">each side can be a file,</text>
+    <text class="s" x="1" y="254">the open doc, or a</text>
+    <text class="s" x="1" y="270">stored snapshot</text>
+    <path class="wire" d="M135,83 C152,83 152,120 168,120" marker-end="url(#ah)"/>
+    <path class="wire" d="M135,177 C152,177 152,132 168,132" marker-end="url(#ah)"/>
+
+    <!-- core -->
+    <rect class="core" x="170" y="8" width="300" height="300" rx="12"/>
+    <text class="cap" x="186" y="31">DIFF CORE</text>
+    <text class="s" x="186" y="47">plain .NET + RhinoCommon · no UI · unit-testable</text>
+    <g>
+      <rect class="step" x="186" y="60" width="268" height="40" rx="7"/>
+      <circle class="num" cx="204" cy="80" r="10"/><text class="numt" x="204" y="84" text-anchor="middle">1</text>
+      <text class="t" x="222" y="77">Snapshot</text><text class="s" x="222" y="92">fingerprint every object + table</text>
+      <rect class="step" x="186" y="108" width="268" height="40" rx="7"/>
+      <circle class="num" cx="204" cy="128" r="10"/><text class="numt" x="204" y="132" text-anchor="middle">2</text>
+      <text class="t" x="222" y="125">Match tables</text><text class="s" x="222" y="140">layers · blocks · materials · groups</text>
+      <rect class="step" x="186" y="156" width="268" height="40" rx="7"/>
+      <circle class="num" cx="204" cy="176" r="10"/><text class="numt" x="204" y="180" text-anchor="middle">3</text>
+      <text class="t" x="222" y="173">Match objects</text><text class="s" x="222" y="188">key → GUID → hash → shape → fuzzy</text>
+      <rect class="step" x="186" y="204" width="268" height="40" rx="7"/>
+      <circle class="num" cx="204" cy="224" r="10"/><text class="numt" x="204" y="228" text-anchor="middle">4</text>
+      <text class="t" x="222" y="221">Compare &amp; classify</text><text class="s" x="222" y="236">moved · reshaped · attributes</text>
+      <rect class="step" x="186" y="252" width="268" height="40" rx="7"/>
+      <circle class="num" cx="204" cy="272" r="10"/><text class="numt" x="204" y="276" text-anchor="middle">5</text>
+      <text class="t" x="222" y="269">Group by root cause</text><text class="s" x="222" y="284">→ DiffResult (serializable)</text>
+    </g>
+
+    <!-- shells -->
+    <path class="wire" d="M470,158 C490,158 488,62 508,62" marker-end="url(#ah)"/>
+    <path class="wire" d="M470,158 L508,158" marker-end="url(#ah)"/>
+    <path class="wire" d="M470,158 C490,158 488,254 508,254" marker-end="url(#ah)"/>
+
+    <g class="add">
+      <rect class="box" x="510" y="20" width="201" height="86" rx="8"/>
+      <rect class="bar" x="510" y="28" width="3" height="70" rx="1.5"/>
+      <text class="t" x="524" y="44">Grasshopper components</text>
+      <text class="s" x="524" y="62">automate · filter · QA gates</text>
+      <text class="s" x="524" y="77">bake · export reports</text>
+      <text class="tag tc" x="524" y="96">v0 · start here</text>
+    </g>
+    <g class="evt">
+      <rect class="box" x="510" y="116" width="201" height="86" rx="8"/>
+      <rect class="bar" x="510" y="124" width="3" height="70" rx="1.5"/>
+      <text class="t" x="524" y="140">Rhino panel + conduit</text>
+      <text class="s" x="524" y="158">browse · zoom-to · review</text>
+      <text class="s" x="524" y="173">sign-off · no GH needed</text>
+      <text class="tag tc" x="524" y="192">v1 · the review UX</text>
+    </g>
+    <g class="same">
+      <rect class="box" x="510" y="212" width="201" height="86" rx="8"/>
+      <rect class="bar" x="510" y="220" width="3" height="70" rx="1.5"/>
+      <text class="t" x="524" y="236">Headless · Rhino.Compute</text>
+      <text class="s" x="524" y="254">diff on every save,</text>
+      <text class="s" x="524" y="269">or in CI on each commit</text>
+      <text class="tag tc" x="524" y="288">later</text>
+    </g>
+  </svg>
+
+  <div class="grid2">
+    <div class="card add">
+      <h4><span class="dot"></span>GH works well for</h4>
+      <ul class="ticks">
+        <li>Computational designers already work there, so there's no new tool to learn.</li>
+        <li>The diff is <b>data</b>. Added and moved objects can go into filters, tags, bakes and reports.</li>
+        <li>Rule-based QA, e.g. "fail if anything on <span class="mono">Structure::*</span> changed".</li>
+        <li>It's the fastest way to iterate on the matching logic itself.</li>
+      </ul>
+    </div>
+    <div class="card mod">
+      <h4><span class="dot"></span>GH is awkward for</h4>
+      <ul class="ticks">
+        <li>Review means browsing a list and zooming to things. The canvas is built for data flow, not that.</li>
+        <li>On big models every upstream tweak re-runs the diff, so snapshots must be cached.</li>
+        <li>Preview is tied to each component: you can't click a row to zoom to it, and selection doesn't sync.</li>
+        <li>Modelers and PMs who never open GH can't use it.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Where A and B come from</h3>
+  <div class="grid3 src">
+    <div class="card"><div class="k">Two files</div><div class="d">Read both with <span class="mono">File3dm</span>. Neither file has to be open in Rhino.</div><div class="ex">v12.3dm ⇄ v13.3dm</div></div>
+    <div class="card"><div class="k">Doc vs. last save</div><div class="d">"What did I change this session?" Probably the most common question.</div><div class="ex">disk ⇄ active doc</div></div>
+    <div class="card"><div class="k">Snapshot history</div><div class="d">Save a small fingerprint file on each save, and any two versions diff in seconds.</div><div class="ex">v09 · v10 · v11 · <b>v12</b> ⇄ <b>now</b></div></div>
+  </div>
+</div>
+</body></html>

@@ -1,0 +1,4 @@
+* text=auto
+# Shell hooks must keep LF endings or the shebang breaks on Windows checkouts.
+.githooks/* text eol=lf
+*.sh text eol=lf

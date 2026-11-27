@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Snapshots File3dm / RhinoDoc into Core records and answers geometry questions (deviation, topology). -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../DittoHopper.Core/DittoHopper.Core.csproj" />
+    <PackageReference Include="RhinoCommon" Version="$(RhinoApiVersion)" ExcludeAssets="runtime" />
+    <Reference Update="RhinoCommon"><Private>false</Private></Reference>
+  </ItemGroup>
+</Project>

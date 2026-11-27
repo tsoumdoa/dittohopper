@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+**/artifacts/
+**/TestResults/
+.vs/
+.idea/
+*.user
+*.suo
+# Generated fixture and noise models; never commit .3dm files.
+*.3dm
+*.3dmbak

@@ -1,0 +1,182 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Property changes</title>
+<style>
+*{box-sizing:border-box}
+.wrap{font-size:14px;line-height:1.5;color:var(--foreground)}
+.eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-foreground);font-weight:600;margin-bottom:2px}
+h2{font-size:19px;line-height:1.25;margin:0 0 6px;font-weight:650;letter-spacing:-.01em}
+h3{font-size:14px;margin:22px 0 8px;font-weight:600}
+h3 .lv{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--primary);margin-right:6px}
+p{margin:0 0 10px}
+.lede{color:var(--muted-foreground);max-width:66ch;margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px}
+.mono{font-family:var(--font-mono);font-size:11.5px}
+.muted{color:var(--muted-foreground)}
+.add{--c:var(--success)}.rem{--c:var(--destructive)}.mod{--c:var(--warning)}.evt{--c:var(--info)}.same{--c:var(--muted-foreground)}
+.pill{display:inline-flex;align-items:center;padding:0 7px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;color:var(--c);background:color-mix(in srgb,var(--c) 15%,transparent);line-height:18px}
+
+/* flow */
+.flow{display:grid;grid-template-columns:1fr auto 1fr auto 1fr auto 1fr;align-items:stretch;gap:6px}
+.flow .ar{align-self:center;color:var(--muted-foreground);font-size:16px}
+.flow .card{padding:10px 12px}
+.flow .k{font-size:12.5px;font-weight:650;margin-bottom:6px}
+.flow .k span{display:block;font-weight:400;color:var(--muted-foreground);font-size:11px}
+.kv{font-family:var(--font-mono);font-size:10.5px;line-height:1.65;white-space:nowrap}
+.kv .x{color:var(--warning);font-weight:700}
+.kv .ok{color:var(--success)}
+.kv .dim{color:var(--muted-foreground)}
+@media (max-width:640px){.flow{grid-template-columns:1fr}.flow .ar{transform:rotate(90deg);justify-self:center}}
+.foot{font-size:12.5px;color:var(--muted-foreground);margin-top:10px;line-height:1.45}
+.foot b{color:var(--foreground);font-weight:600}
+
+/* headline */
+.headline{padding:14px 16px;border-radius:var(--radius);border:1px solid var(--border);background:var(--card)}
+.scope{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:12.5px;color:var(--muted-foreground)}
+.scope input{font-family:var(--font-mono);font-size:12px;padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:var(--background);color:var(--foreground);width:180px}
+.sentence{font-size:15px;line-height:1.45;font-weight:500}
+.sentence .ok{color:var(--success);font-weight:650}
+.sentence .warn{color:var(--warning);font-weight:650}
+.stats{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;font-size:12px;color:var(--muted-foreground)}
+.stats b{color:var(--foreground);font-size:13px}
+.ibar{height:8px;border-radius:4px;overflow:hidden;display:flex;margin-top:8px;background:color-mix(in srgb,var(--muted-foreground) 15%,transparent)}
+.ibar i{display:block;height:100%}
+
+/* matrix */
+.mx{overflow-x:auto;margin-top:12px}
+table.m{border-collapse:separate;border-spacing:2px;width:100%;font-size:12px}
+table.m th{font-size:10.5px;font-weight:600;color:var(--muted-foreground);text-align:center;padding:2px 2px 4px;white-space:nowrap}
+table.m th.l{text-align:left}
+table.m td{height:28px;text-align:center;border-radius:5px;font-variant-numeric:tabular-nums}
+table.m td.l{text-align:left;padding:0 6px;white-space:nowrap}
+table.m td.l .n{color:var(--muted-foreground);font-size:11px;margin-left:4px}
+table.m td.z{color:color-mix(in srgb,var(--muted-foreground) 50%,transparent)}
+table.m td.v{cursor:pointer;font-weight:650;background:color-mix(in srgb,var(--c) 20%,transparent);color:var(--c);outline:1px solid color-mix(in srgb,var(--c) 35%,transparent);outline-offset:-1px}
+table.m td.v:hover,table.m td.v.on{background:color-mix(in srgb,var(--c) 38%,transparent)}
+table.m td.st{text-align:left;padding:0 6px;white-space:nowrap;font-size:11.5px;font-weight:600}
+table.m tr.out td.l{opacity:1}
+table.m tr.in td.l{color:var(--foreground)}
+.tag-in{font-size:9.5px;font-weight:700;letter-spacing:.04em;color:var(--primary);border:1px solid color-mix(in srgb,var(--primary) 50%,transparent);border-radius:4px;padding:0 4px;margin-left:6px;vertical-align:1px}
+
+/* change sets */
+.cs{margin-top:4px}
+.gh{font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;color:var(--muted-foreground);margin:12px 0 4px;display:flex;align-items:center;gap:8px}
+.gh.w{color:var(--warning)}
+.set{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:start;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--card);margin-bottom:6px;transition:box-shadow .15s}
+.set.hl{box-shadow:0 0 0 2px var(--primary)}
+.set .cnt{font-size:16px;font-weight:700;min-width:36px;text-align:right;font-variant-numeric:tabular-nums;line-height:1.2}
+.set .cnt small{display:block;font-size:10px;font-weight:500;color:var(--muted-foreground)}
+.set .ttl{font-size:12.5px;font-weight:600}
+.set .ttl .lay{font-family:var(--font-mono);font-weight:500;font-size:11.5px;color:var(--muted-foreground)}
+.chg{display:flex;flex-wrap:wrap;gap:4px 8px;margin-top:4px}
+.chg span{font-size:11.5px;display:inline-flex;align-items:center;gap:5px}
+.chg .p{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted-foreground)}
+.chg .f{font-family:var(--font-mono);font-size:11px;text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--muted-foreground) 60%,transparent);color:var(--muted-foreground)}
+.chg .t{font-family:var(--font-mono);font-size:11px;color:var(--foreground);font-weight:600}
+.why{margin-top:5px;font-size:11.5px;color:var(--warning);font-weight:600}
+.acts{display:flex;flex-direction:row;gap:4px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.acts button{all:unset;cursor:pointer;font-size:11px;padding:2px 8px;border-radius:5px;border:1px solid var(--border);text-align:center;white-space:nowrap;background:var(--background)}
+.acts button.ok{color:var(--success)}
+.acts button.rv{color:var(--muted-foreground)}
+@media (max-width:520px){.set{grid-template-columns:auto 1fr}.acts{grid-column:1/-1;flex-direction:row}}
+</style></head><body>
+<div class="wrap">
+  <div class="eyebrow">Follow-up · Property changes</div>
+  <h2>Show what <i>didn't</i> change as clearly as what did</h2>
+  <p class="lede">For confidence, the output you want is a sentence like "outside Facade, only 28 objects changed, in 3 batches", not 300 rows. That needs three levels of detail: <b>matrix → change sets → one object</b>.</p>
+
+  <h3>How a property change is tracked</h3>
+  <div class="flow">
+    <div class="card"><div class="k">1 · Record per object<span>stored as IDs, never names</span></div>
+      <div class="kv">layer&nbsp;&nbsp;&nbsp;#8c1e<br>color&nbsp;&nbsp;&nbsp;ByLayer<br>material ByLayer<br>name&nbsp;&nbsp;&nbsp;&nbsp;"W-042"<br>user&nbsp;&nbsp;&nbsp;&nbsp;{mark, fire}<br>geo&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;77c2…</div></div>
+    <span class="ar">→</span>
+    <div class="card"><div class="k">2 · Compare each property<span>through the table maps</span></div>
+      <div class="kv">map(#8c1e) vs #0000 <span class="x">≠</span><br>ByLayer = ByLayer <span class="ok">✓</span><br>ByLayer = ByLayer <span class="ok">✓</span><br>"W-042" = "W-042" <span class="ok">✓</span><br>per key&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="ok">✓</span><br>77c2 = 77c2&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="ok">✓</span></div></div>
+    <span class="ar">→</span>
+    <div class="card"><div class="k">3 · PropertyChange<span>one per property that differs</span></div>
+      <div class="kv">obj&nbsp;&nbsp;W-042<br>prop layer<br>from Arch::Walls<br>to&nbsp;&nbsp;&nbsp;Default<br><span class="dim">+ 13 unchanged</span></div></div>
+    <span class="ar">→</span>
+    <div class="card"><div class="k">4 · Change set<span>group by identical change</span></div>
+      <div class="kv">layer<br>Walls → Default<br><span class="x">× 23 objects</span><br><span class="dim">one row, not 23</span></div></div>
+  </div>
+  <p class="foot"><b>Store where each value comes from</b> (ByLayer, ByObject or ByParent). Then you know whether the object changed or only its layer did. <b>Accidents usually happen in batches</b>, e.g. select-all followed by a layer change, so grouping identical changes makes them easy to spot.</p>
+
+  <h3><span class="lv">Level 1</span>What changed, and what didn't</h3>
+  <div class="headline">
+    <div class="scope">I meant to change <input id="scope" value="Facade::*" aria-label="Expected scope (layer glob)"> <span>(layer glob · optional)</span></div>
+    <div class="sentence" id="sentence"></div>
+    <div class="ibar" id="ibar"></div>
+    <div class="stats" id="stats"></div>
+    <div class="mx"><table class="m" id="mx"></table></div>
+  </div>
+
+  <h3><span class="lv">Level 2</span>Change sets <span class="muted" style="font-weight:400;font-size:12.5px">· click a matrix cell to highlight its set</span></h3>
+  <div class="cs" id="cs"></div>
+</div>
+<script>
+const COLS=[['place','Placement'],['shape','Shape'],['layer','Layer'],['color','Color'],['mat','Material'],['name','Name'],['user','User text'],['add','Added'],['rem','Removed']];
+const LAYERS=[
+ {n:'Facade::Panels',c:312},{n:'Facade::Mullions',c:640},{n:'Architecture::Walls',c:212},{n:'Architecture::Doors',c:36},
+ {n:'Structure::Columns',c:64},{n:'Structure::Slabs',c:12},{n:'Structure::Beams',c:90}];
+const SETS=[
+ {id:0,layer:'Architecture::Walls',n:23,props:[['layer','Layer','Architecture::Walls','Default']],flag:'Moved to the Default layer'},
+ {id:1,layer:'Structure::Columns',n:1,props:[['place','Moved','','+0.8 mm X']],flag:'Tiny nudge (< 1 mm): a gumball slip?'},
+ {id:2,layer:'Structure::Slabs',n:4,props:[['color','Color','ByLayer','255,0,0 (object)']],flag:'ByLayer color overridden'},
+ {id:3,layer:'Facade::Panels',n:1,props:[['add','Added','','identical to P-117']],flag:'Duplicate (copy in place?)'},
+ {id:4,layer:'Facade::Panels',n:48,props:[['shape','Shape','','area −2…+6%'],['layer','Layer','Facade::Panels','Facade::Panels-B'],['user','User text','panel_type=A','panel_type=B']]},
+ {id:5,layer:'Facade::Mullions',n:120,props:[['add','Added','','new mullions']]},
+];
+const ok=new Set(); let hl=null;
+const glob=g=>{g=g.trim(); if(!g) return ()=>false; const re=new RegExp('^'+g.split('*').map(s=>s.replace(/[.+?^${}()|[\]\\]/g,'\\$&')).join('.*')+'$','i'); return n=>re.test(n);};
+function render(){
+  const inScope=glob(document.getElementById('scope').value);
+  const needs=s=>!ok.has(s.id)&&(s.flag||!inScope(s.layer));
+  // matrix
+  let h='<thead><tr><th class="l">Layer (A)</th>'+COLS.map(c=>`<th>${c[1]}</th>`).join('')+'<th class="l">Status</th></tr></thead><tbody>';
+  for(const L of LAYERS){
+    const sets=SETS.filter(s=>s.layer===L.n), ins=inScope(L.n);
+    h+=`<tr class="${ins?'in':'out'}"><td class="l">${L.n}${ins?'<span class="tag-in">SCOPE</span>':''}<span class="n">${L.c}</span></td>`;
+    for(const [k] of COLS){
+      const hit=sets.filter(s=>s.props.some(p=>p[0]===k));
+      const n=hit.reduce((a,s)=>a+s.n,0);
+      if(!n){h+='<td class="z">·</td>';continue;}
+      const warn=hit.some(needs);
+      h+=`<td class="v ${warn?'mod':'evt'} ${hl!=null&&hit.some(s=>s.id===hl)?'on':''}" data-s="${hit[0].id}">${n}</td>`;
+    }
+    const w=sets.filter(needs).length;
+    h+=`<td class="st">${!sets.length?'<span style="color:var(--success)">✓ untouched</span>':w?`<span style="color:var(--warning)">⚠ ${w} to check</span>`:'<span style="color:var(--muted-foreground)">expected</span>'}</td></tr>`;
+  }
+  document.getElementById('mx').innerHTML=h+'</tbody>';
+  document.querySelectorAll('#mx td.v').forEach(td=>td.onclick=()=>{hl=+td.dataset.s;render();const el=document.querySelector(`.set[data-id="${hl}"]`);});
+  // sentence + stats
+  const total=LAYERS.reduce((a,l)=>a+l.c,0);
+  const modified=SETS.filter(s=>!s.props.some(p=>p[0]==='add')).reduce((a,s)=>a+s.n,0);
+  const added=SETS.filter(s=>s.props.some(p=>p[0]==='add')).reduce((a,s)=>a+s.n,0);
+  const same=total-modified;
+  const untouched=LAYERS.filter(L=>!SETS.some(s=>s.layer===L.n)).map(L=>L.n);
+  const out=SETS.filter(s=>!inScope(s.layer)&&!ok.has(s.id)); const outN=out.reduce((a,s)=>a+s.n,0);
+  const flagged=SETS.filter(needs);
+  const scopeTxt=document.getElementById('scope').value.trim();
+  document.getElementById('sentence').innerHTML= scopeTxt
+    ? (outN? `Outside <span class="mono">${scopeTxt}</span>, <span class="warn">${outN} objects changed in ${out.length} set${out.length>1?'s':''}</span>. ` : `<span class="ok">Nothing outside <span class="mono">${scopeTxt}</span> changed.</span> `)
+      + `<span class="ok">${untouched.length} layers are untouched</span>${flagged.length?` · <span class="warn">${flagged.length} set${flagged.length>1?'s':''} to check</span>`:''}.`
+    : `<span class="ok">${same.toLocaleString()} of ${total.toLocaleString()} objects are identical.</span> ${flagged.length} change set${flagged.length!==1?'s':''} look suspicious.`;
+  document.getElementById('ibar').innerHTML=`<i style="width:${same/(total+added)*100}%;background:color-mix(in srgb,var(--success) 55%,transparent)"></i><i style="width:${modified/(total+added)*100}%;background:var(--warning)"></i><i style="width:${added/(total+added)*100}%;background:var(--info)"></i>`;
+  document.getElementById('stats').innerHTML=`<span><b>${same.toLocaleString()}</b> identical (${(same/total*100).toFixed(1)}%)</span><span><b>${modified}</b> modified</span><span><b>${added}</b> added</span><span><b>0</b> removed</span>`;
+  // change sets
+  const row=s=>{const need=needs(s);
+    return `<div class="set ${hl===s.id?'hl':''}" data-id="${s.id}"><div class="cnt">${s.n}<small>obj</small></div>
+     <div><div class="ttl"><span class="lay">${s.layer}</span></div>
+     <div class="chg">${s.props.map(p=>`<span><span class="p">${p[1]}</span>${p[2]?`<span class="f">${p[2]}</span>→`:''}<span class="t">${p[3]}</span></span>`).join('')}</div>
+     ${need?`<div class="why">⚠ ${s.flag||'Outside your scope'}</div>`:''}</div>
+     <div class="acts"><button>Show</button>${need?`<button class="ok" data-ok="${s.id}">✓ Intended</button>`:(ok.has(s.id)?`<button class="rv" data-un="${s.id}">↺ Undo</button>`:'')}${s.props[0][0]!=='add'?'<button class="rv">Restore from A</button>':'<button class="rv">Delete</button>'}</div></div>`;};
+  const need=SETS.filter(needs), fine=SETS.filter(s=>!needs(s));
+  document.getElementById('cs').innerHTML=
+    (need.length?`<div class="gh w">⚠ Needs a look · ${need.length}</div>`+need.map(row).join(''):'')+
+    `<div class="gh">✓ Expected / signed off · ${fine.length}</div>`+fine.map(row).join('');
+  document.querySelectorAll('[data-ok]').forEach(b=>b.onclick=()=>{ok.add(+b.dataset.ok);render();});
+  document.querySelectorAll('[data-un]').forEach(b=>b.onclick=()=>{ok.delete(+b.dataset.un);render();});
+}
+document.getElementById('scope').addEventListener('input',render);
+render();
+</script>
+</body></html>

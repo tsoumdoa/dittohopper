@@ -1,0 +1,256 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Matching</title>
+<style>
+*{box-sizing:border-box}
+.wrap{font-size:14px;line-height:1.5;color:var(--foreground)}
+.eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-foreground);font-weight:600;margin-bottom:2px}
+h2{font-size:19px;line-height:1.25;margin:0 0 6px;font-weight:650;letter-spacing:-.01em}
+h3{font-size:14px;margin:22px 0 8px;font-weight:600}
+p{margin:0 0 10px}
+.lede{color:var(--muted-foreground);max-width:64ch;margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+.muted{color:var(--muted-foreground)}
+.add{--c:var(--success)}.rem{--c:var(--destructive)}.mod{--c:var(--warning)}.evt{--c:var(--info)}.same{--c:var(--muted-foreground)}
+.pill{display:inline-flex;align-items:center;padding:0 7px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;color:var(--c);background:color-mix(in srgb,var(--c) 15%,transparent);line-height:18px}
+.badge{font-family:var(--font-mono);font-size:10.5px;padding:0 6px;border-radius:4px;border:1px solid var(--border);color:var(--muted-foreground);white-space:nowrap;line-height:17px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:560px){.grid2{grid-template-columns:1fr}}
+.card h4{margin:0 0 4px;font-size:13.5px;font-weight:650;display:flex;align-items:center;gap:8px}
+.card h4 .ic{color:var(--c);font-weight:800}
+ul.ticks{list-style:none;margin:0;padding:0}
+ul.ticks li{position:relative;padding-left:16px;margin:6px 0 0;font-size:13px;line-height:1.4}
+ul.ticks li::before{content:"";position:absolute;left:2px;top:7px;width:6px;height:6px;border-radius:50%;background:var(--c)}
+
+/* demo */
+.demo{padding:14px 16px}
+.controls{display:flex;flex-wrap:wrap;gap:10px 22px;margin-bottom:12px}
+.seg{display:flex;flex-direction:column;gap:4px}
+.seg-label{font-size:11px;color:var(--muted-foreground);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.seg-btns{display:inline-flex;border:1px solid var(--border);border-radius:8px;padding:2px;gap:2px;background:color-mix(in srgb,var(--muted) 50%,transparent)}
+.seg button{all:unset;cursor:pointer;font-size:12.5px;padding:4px 10px;border-radius:6px;color:var(--muted-foreground);font-weight:550}
+.seg button.on{background:var(--background);color:var(--foreground);box-shadow:0 0 0 1px var(--border)}
+.demo-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:600px){.demo-body{grid-template-columns:1fr}}
+#plan{width:100%;height:auto;display:block;border-radius:8px;background:color-mix(in srgb,var(--muted) 45%,transparent)}
+#plan .lbl{font-size:10px;fill:var(--muted-foreground);font-family:var(--font-mono)}
+#plan .o{stroke-width:1.2}
+#plan .same{fill:color-mix(in srgb,var(--muted-foreground) 22%,transparent);stroke:color-mix(in srgb,var(--muted-foreground) 70%,transparent)}
+#plan .add{fill:color-mix(in srgb,var(--success) 45%,transparent);stroke:var(--success)}
+#plan .mod{fill:color-mix(in srgb,var(--warning) 45%,transparent);stroke:var(--warning)}
+#plan .ghost-rem{fill:color-mix(in srgb,var(--destructive) 10%,transparent);stroke:var(--destructive);stroke-dasharray:3 2}
+#plan .ghost-mod{fill:none;stroke:var(--warning);stroke-dasharray:3 2;opacity:.8}
+#plan .arrow{stroke:var(--warning);stroke-width:1.4;fill:none}
+#plan .ahp{fill:var(--warning)}
+.legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;color:var(--muted-foreground);margin-top:8px}
+.legend i{display:inline-block;width:12px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.meter{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:12px;color:var(--muted-foreground)}
+.cells{display:flex;gap:2px}
+.cells span{width:9px;height:14px;border-radius:2px}
+.cells .s{background:var(--primary)}
+.cells .n{background:repeating-linear-gradient(45deg,color-mix(in srgb,var(--muted-foreground) 55%,transparent) 0 2px,transparent 2px 4px);outline:1px solid color-mix(in srgb,var(--muted-foreground) 40%,transparent);outline-offset:-1px}
+.meter b{color:var(--foreground)}
+#rows{list-style:none;margin:0;padding:0}
+#rows li{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--border);font-size:12.5px;line-height:1.35}
+#rows li:first-child{border-top:0}
+#rows li .t b{font-weight:600}
+#rows li .t .sub{display:block;color:var(--muted-foreground);font-size:11.5px}
+#rows li.noise .t{opacity:.6}
+#rows li.noise .t b::after{content:" · noise";color:var(--destructive);font-weight:500;font-size:11px}
+#rows li.dim{opacity:.6}
+.note{margin:10px 0 0;font-size:12.5px;padding:10px 12px;border-radius:8px;background:color-mix(in srgb,var(--muted) 55%,transparent);line-height:1.45}
+
+/* cascade */
+.cascade{padding:6px 16px 10px}
+.crow{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr) minmax(0,1fr);gap:14px;padding:10px 0;border-top:1px solid var(--border);align-items:center}
+.crow.head{border-top:0;padding:6px 0 2px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted-foreground);font-weight:600}
+.crow .p{font-size:13.5px;font-weight:650}
+.crow .p .n{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--primary);color:var(--primary-foreground);font-size:11px;font-weight:700;margin-right:6px;vertical-align:1px}
+.crow .sig{font-size:12px;color:var(--muted-foreground);margin-top:2px;line-height:1.4}
+.track{height:12px;border-radius:3px;background:color-mix(in srgb,var(--muted-foreground) 12%,transparent);position:relative;overflow:hidden}
+.track .left{position:absolute;left:0;top:0;bottom:0;background:color-mix(in srgb,var(--muted-foreground) 55%,transparent);border-radius:3px 0 0 3px}
+.track .bite{position:absolute;top:0;bottom:0;background:var(--primary);opacity:.9}
+.crow .nums{font-family:var(--font-mono);font-size:11px;color:var(--muted-foreground);margin-top:4px}
+.crow .nums b{color:var(--foreground);font-weight:600}
+.crow .what{font-size:12.5px;line-height:1.4}
+.conf{display:inline-block;margin-top:4px}
+.crow.last .p{color:var(--muted-foreground)}
+@media (max-width:560px){.crow{grid-template-columns:1fr}.crow.head{display:none}}
+.principles{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media (max-width:640px){.principles{grid-template-columns:1fr}}
+.principles .card{padding:14px 16px}
+.principles .k{font-size:13.5px;font-weight:650;margin-bottom:4px}
+.principles .d{font-size:12.5px;color:var(--muted-foreground);line-height:1.45}
+</style></head><body>
+<div class="wrap">
+  <div class="eyebrow">Question 2</div>
+  <h2>Match simply by ID, or something more durable?</h2>
+  <p class="lede">Use Rhino GUIDs as the first signal, but never the only one. They survive edits made in place. They don't survive the things GH users do all day.</p>
+
+  <div class="grid2">
+    <div class="card add"><h4><span class="ic">✓</span>GUID survives</h4>
+      <ul class="ticks">
+        <li>Move, Rotate, Scale, Gumball</li>
+        <li>Control-point and sub-object edits</li>
+        <li>Changing layer, name, color or user text</li>
+        <li>Save, Save As, reopening the file</li>
+      </ul></div>
+    <div class="card rem"><h4><span class="ic">✕</span>GUID is lost (new object)</h4>
+      <ul class="ticks">
+        <li><b>Re-baking from Grasshopper</b> (delete, then bake again)</li>
+        <li>Join, Explode, Booleans, Copy or Mirror then deleting the original</li>
+        <li>Round-trips through DWG, IFC or other tools</li>
+        <li>A consultant rebuilding or re-exporting the model</li>
+      </ul></div>
+  </div>
+
+  <h3>Try it: same edits, two ways B was made, two strategies</h3>
+  <div class="card demo">
+    <div class="controls">
+      <div class="seg" id="segB"><span class="seg-label">B was made by</span>
+        <span class="seg-btns"><button data-v="inplace">Editing in place</button><button data-v="rebake" class="on">Re-baking from GH</button></span></div>
+      <div class="seg" id="segS"><span class="seg-label">Diff strategy</span>
+        <span class="seg-btns"><button data-v="simple" class="on">Simple · GUID only</button><button data-v="durable">Durable · cascade</button></span></div>
+    </div>
+    <div class="demo-body">
+      <div>
+        <svg id="plan" viewBox="0 0 320 222" role="img" aria-label="Plan view of walls and columns colored by diff status"></svg>
+        <div class="legend">
+          <span><i style="background:color-mix(in srgb,var(--success) 55%,transparent)"></i>added</span>
+          <span><i style="border:1px dashed var(--destructive)"></i>removed</span>
+          <span><i style="background:color-mix(in srgb,var(--warning) 55%,transparent)"></i>modified</span>
+          <span><i style="border:1px dashed var(--warning)"></i>was here</span>
+          <span><i style="background:color-mix(in srgb,var(--muted-foreground) 30%,transparent)"></i>unchanged</span>
+        </div>
+      </div>
+      <div>
+        <div class="meter"><span class="cells" id="cells"></span><span id="mtext"></span></div>
+        <ul id="rows"></ul>
+        <p class="note" id="note"></p>
+      </div>
+    </div>
+  </div>
+
+  <h3>The durable version: a matching cascade</h3>
+  <p class="muted" style="font-size:13px;margin-top:-4px">Each pass only sees objects no earlier pass claimed. Cheap, certain signals go first and fuzzy ones last. Example numbers: a 1,240-object model after a partial re-bake.</p>
+  <div class="card cascade" id="cascade"></div>
+
+  <h3>Three rules that keep it trustworthy</h3>
+  <div class="principles">
+    <div class="card"><div class="k">Identity ≠ change</div><div class="d">Matching decides <i>which object is which</i>. Comparing decides <i>what changed</i>. A pair matched by geometry hash has unchanged geometry by definition, so only its attributes can differ.</div></div>
+    <div class="card"><div class="k">Every pair carries evidence</div><div class="d">Store <span class="mono">matchedBy</span> and <span class="mono">confidence</span> on each pair and show them in the UI. Users can unlink or relink pairs. Low-confidence pairs go into a "review" bucket instead of being presented as certain.</div></div>
+    <div class="card"><div class="k">Opt-in: stamp a durable key</div><div class="d">A <span class="mono">Stamp IDs</span> component writes <span class="mono">diff:uid</span> into user text. Bakes that carry it forward make pass 1 catch almost everything. It's opt-in because it writes to the model.</div></div>
+  </div>
+</div>
+
+<script>
+const O=[
+ {id:'W1',k:'Wall',a:[20,20,280,12],b:[20,20,280,12],lx:160,ly:15,anc:'middle'},
+ {id:'W2',k:'Wall',a:[20,32,12,168],b:[20,32,12,168],lx:38,ly:60,anc:'start'},
+ {id:'W3',k:'Wall',a:[32,188,188,12],b:[32,188,268,12],lx:160,ly:214,anc:'middle'},
+ {id:'W4',k:'Wall',a:[288,32,12,100],b:null,lx:282,ly:60,anc:'end'},
+ {id:'C1',k:'Column',a:[86,76,18,18],b:[86,76,18,18]},
+ {id:'C2',k:'Column',a:[166,76,18,18],b:[206,100,18,18]},
+ {id:'C3',k:'Column',a:[86,136,18,18],b:[86,136,18,18]},
+ {id:'C4',k:'Column',a:[166,136,18,18],b:[166,136,18,18]},
+ {id:'C5',k:'Column',a:null,b:[246,136,18,18]},
+];
+let scen='rebake', strat='simple';
+const R=(r,cls)=>`<rect class="o ${cls}" x="${r[0]}" y="${r[1]}" width="${r[2]}" height="${r[3]}" rx="1.5"/>`;
+function status(o){
+  if(scen==='rebake'&&strat==='simple') return 'everything';
+  if(o.id==='W1'||o.id==='W2') return strat==='simple'?'mod':'same';
+  if(o.id==='W3') return 'reshape';
+  if(o.id==='W4') return 'rem';
+  if(o.id==='C2') return strat==='simple'?'reshape':'move';
+  if(o.id==='C5') return 'add';
+  return 'same';
+}
+function draw(){
+  let fills='',ghosts='',labels='';
+  for(const o of O){
+    const st=status(o);
+    if(st==='everything'){ if(o.b) fills+=R(o.b,'add'); if(o.a) ghosts+=R(o.a,'ghost-rem'); }
+    else if(st==='same') fills+=R(o.b,'same');
+    else if(st==='mod') fills+=R(o.b,'mod');
+    else if(st==='add') fills+=R(o.b,'add');
+    else if(st==='rem') ghosts+=R(o.a,'ghost-rem');
+    else if(st==='reshape'||st==='move'){ ghosts+=R(o.a,'ghost-mod'); fills+=R(o.b,'mod');
+      if(st==='move'){const ax=o.a[0]+9,ay=o.a[1]+9,bx=o.b[0]+9,by=o.b[1]+9;
+        ghosts+=`<path class="arrow" d="M${ax},${ay} L${bx-6},${by-3.6}" marker-end="url(#ahm)"/>`;}
+    }
+    const r=o.b||o.a;
+    if(o.k==='Column') labels+=`<text class="lbl" x="${r[0]+9}" y="${r[1]+30}" text-anchor="middle">${o.id}</text>`;
+    else labels+=`<text class="lbl" x="${o.lx}" y="${o.ly}" text-anchor="${o.anc}">${o.id}</text>`;
+  }
+  document.getElementById('plan').innerHTML=`<defs><marker id="ahm" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L8,4 L0,8 z" class="ahp"/></marker></defs>${fills}${ghosts}${labels}`;
+}
+const B=(t)=>`<span class="badge">${t}</span>`;
+const P=(k,t)=>`<span class="pill ${k}">${t}</span>`;
+const row=(k,label,title,sub,badge,cls='')=>`<li class="${cls}">${P(k,label)}<span class="t"><b>${title}</b><span class="sub">${sub}</span></span>${badge?B(badge):''}</li>`;
+const DATA={
+ 'inplace|simple':{s:4,n:2,rows:[
+   row('mod','mod','W1 Wall','layer "Walls" → "A-WALL"','GUID','noise'),
+   row('mod','mod','W2 Wall','layer "Walls" → "A-WALL"','GUID','noise'),
+   row('mod','mod','W3 Wall','geometry changed · layer "Walls" → "A-WALL"','GUID'),
+   row('mod','mod','C2 Column','geometry changed','GUID'),
+   row('rem','rem','W4 Wall','only in A',''),
+   row('add','add','C5 Column','only in B',''),
+ ],note:'The IDs survived, so pairing works. But the layer rename shows up on every wall, and a move looks the same as a reshape.'},
+ 'inplace|durable':{s:5,n:0,rows:[
+   row('evt','layer','Layer renamed','"Walls" → "A-WALL" · 3 objects follow it','layer id'),
+   row('mod','reshape','W3 Wall','length 188 → 268','GUID'),
+   row('mod','move','C2 Column','+40 x, +24 y · rigid transform, shape unchanged','GUID'),
+   row('rem','rem','W4 Wall','only in A',''),
+   row('add','add','C5 Column','only in B',''),
+ ],note:'Same pairs, but a smarter comparison: layers are compared through the layer table, and geometry changes are split into placement and shape.'},
+ 'rebake|simple':{s:2,n:14,rows:[
+   row('rem','rem ×8','Every object in A','W1 W2 W3 W4 C1 C2 C3 C4',''),
+   row('add','add ×8','Every object in B','W1 W2 W3 C1 C2 C3 C4 C5',''),
+ ],note:'Re-baking gave every object a new GUID, so everything looks deleted and recreated. You can no longer see the 4 real edits or the rename.'},
+ 'rebake|durable':{s:5,n:0,rows:[
+   row('evt','layer','Layer renamed','"Walls" → "A-WALL" · 3 objects follow it','layer id'),
+   row('mod','reshape','W3 Wall','length 188 → 268','fuzzy 0.86'),
+   row('mod','move','C2 Column','+40 x, +24 y · rigid transform','shape+near'),
+   row('rem','rem','W4 Wall','only in A',''),
+   row('add','add','C5 Column','only in B',''),
+   row('same','same ×4','Unchanged','W1 W2 C1 C3 C4 · new GUIDs, identical geometry','geo hash','dim'),
+ ],note:'Every GUID is new, and the answer is the same anyway. The geometry hash re-pairs the untouched objects, the shape signature catches the move, and a fuzzy score catches the edited wall.'},
+};
+// fix count text on durable rebake unchanged row (5 objects)
+DATA['rebake|durable'].rows[5]=row('same','same ×5','Unchanged','W1 W2 C1 C3 C4 · new GUIDs, identical geometry','geo hash','dim');
+function render(){
+  draw();
+  const d=DATA[scen+'|'+strat];
+  document.getElementById('rows').innerHTML=d.rows.join('');
+  document.getElementById('note').textContent=d.note;
+  const total=d.s+d.n;
+  document.getElementById('cells').innerHTML='<span class="s"></span>'.repeat(d.s)+'<span class="n"></span>'.repeat(d.n);
+  document.getElementById('mtext').innerHTML=`<b>${total}</b> rows to review · <b>${d.s}</b> real · <b>${d.n}</b> noise`;
+}
+function seg(id,set){document.querySelectorAll('#'+id+' button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#'+id+' button').forEach(x=>x.classList.toggle('on',x===b));set(b.dataset.v);render();});}
+seg('segB',v=>scen=v); seg('segS',v=>strat=v);
+render();
+
+// cascade
+const C=[
+ {n:1,p:'Stable key',sig:'your own ID in user text (e.g. mark=C-12) or a unique name',m:60,what:'Anything you tagged. Survives everything.',conf:['add','certain']},
+ {n:2,p:'Rhino GUID',sig:'object id, checked that the type matches',m:770,what:'Objects edited in place.',conf:['add','certain']},
+ {n:3,p:'Geometry hash',sig:'exact match, coordinates snapped to model tolerance',m:388,what:'Untouched objects that got a new ID from a re-bake or paste.',conf:['add','very high']},
+ {n:4,p:'Shape signature + nearest',sig:'measures that ignore position (area, volume, edge lengths), then closest match',m:13,what:'Objects moved or rotated <i>and</i> given a new ID.',conf:['evt','high']},
+ {n:5,p:'Fuzzy score ≥ 0.75',sig:'type, bbox overlap, area/volume ratio, layer, name',m:6,what:'Objects edited <i>and</i> given a new ID.',conf:['mod','needs review']},
+];
+let left=1240,html=`<div class="crow head"><span>Pass · signal</span><span>Unmatched in A</span><span>What it catches</span></div>`;
+for(const c of C){
+  const prev=left; left-=c.m;
+  html+=`<div class="crow"><div><div class="p"><span class="n">${c.n}</span>${c.p}</div><div class="sig">${c.sig}</div></div>
+   <div><div class="track"><div class="left" style="width:${left/1240*100}%"></div><div class="bite" style="left:${left/1240*100}%;width:${Math.max(c.m/1240*100,.6)}%"></div></div>
+   <div class="nums">matched <b>${c.m}</b> · ${left.toLocaleString()} left</div></div>
+   <div><div class="what">${c.what}</div><span class="pill ${c.conf[0]} conf">${c.conf[1]}</span></div></div>`;
+}
+html+=`<div class="crow last"><div><div class="p">Unmatched leftovers</div><div class="sig">nothing claimed them</div></div>
+  <div><div class="track"><div class="left" style="width:.6%;background:var(--destructive)"></div></div><div class="nums"><b>3</b> left in A · <b>6</b> left in B</div></div>
+  <div><div class="what"><span class="pill rem">3 removed</span> <span class="pill add">6 added</span></div></div></div>`;
+document.getElementById('cascade').innerHTML=html;
+</script>
+</body></html>

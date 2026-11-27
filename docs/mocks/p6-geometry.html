@@ -1,0 +1,197 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Geometry changes</title>
+<style>
+*{box-sizing:border-box}
+.wrap{font-size:14px;line-height:1.5;color:var(--foreground)}
+.eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-foreground);font-weight:600;margin-bottom:2px}
+h2{font-size:19px;line-height:1.25;margin:0 0 6px;font-weight:650;letter-spacing:-.01em}
+h3{font-size:14px;margin:22px 0 8px;font-weight:600}
+p{margin:0 0 10px}
+.lede{color:var(--muted-foreground);max-width:66ch;margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px}
+.mono{font-family:var(--font-mono);font-size:11.5px}
+.muted{color:var(--muted-foreground)}
+.add{--c:var(--success)}.rem{--c:var(--destructive)}.mod{--c:var(--warning)}.evt{--c:var(--info)}.same{--c:var(--muted-foreground)}.dat{--c:var(--chart-4,var(--info))}
+.pill{display:inline-flex;align-items:center;padding:0 8px;border-radius:999px;font-size:11px;font-weight:650;white-space:nowrap;color:var(--c);background:color-mix(in srgb,var(--c) 15%,transparent);line-height:19px}
+
+/* ladder */
+.ladder{padding:10px 16px}
+.lr{display:grid;grid-template-columns:minmax(0,1.25fr) 44px minmax(0,1fr);gap:8px;align-items:center;padding:7px 0}
+.q{display:flex;gap:9px;align-items:flex-start;font-size:13px;font-weight:600;line-height:1.35}
+.q .n{flex:none;display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--primary);color:var(--primary-foreground);font-size:11px;font-weight:700}
+.q small{display:block;font-weight:400;color:var(--muted-foreground);font-size:11.5px;margin-top:1px}
+.yes{font-size:11px;color:var(--muted-foreground);text-align:center;white-space:nowrap}
+.bk{border-radius:8px;padding:6px 10px;border:1px solid color-mix(in srgb,var(--c) 40%,transparent);background:color-mix(in srgb,var(--c) 9%,transparent)}
+.bk b{color:var(--c);font-size:12.5px}
+.bk span{display:block;font-size:11.5px;color:var(--muted-foreground);line-height:1.35}
+.no{font-size:11px;color:var(--muted-foreground);padding-left:5px;margin:-2px 0}
+.cost{font-size:12px;color:var(--muted-foreground);border-top:1px solid var(--border);margin-top:6px;padding-top:8px}
+@media (max-width:560px){.lr{grid-template-columns:1fr}.yes{text-align:left}}
+
+/* examples */
+.tabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px}
+.tabs button{all:unset;cursor:pointer;font-size:12.5px;padding:4px 11px;border-radius:7px;border:1px solid var(--border);color:var(--muted-foreground);font-weight:550;background:var(--card)}
+.tabs button.on{color:var(--primary-foreground);background:var(--primary);border-color:var(--primary)}
+.ex{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:0;padding:0;overflow:hidden}
+@media (max-width:620px){.ex{grid-template-columns:1fr}}
+.viz{padding:12px;background:color-mix(in srgb,var(--muted) 50%,transparent);border-right:1px solid var(--border)}
+.viz svg{width:100%;height:auto;display:block}
+.vleg{display:flex;flex-wrap:wrap;gap:3px 12px;font-size:11px;color:var(--muted-foreground);margin-top:6px}
+.vleg i{display:inline-block;width:16px;height:0;border-top:2px solid;vertical-align:3px;margin-right:5px}
+.info{padding:12px 14px}
+.info .hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.info .hd b{font-size:13.5px}
+table.pt{width:100%;border-collapse:collapse;font-size:12px}
+table.pt th{text-align:left;font-weight:600;color:var(--muted-foreground);font-size:10px;text-transform:uppercase;letter-spacing:.05em;padding:3px 5px;border-bottom:1px solid var(--border)}
+table.pt td{padding:4px 5px;border-bottom:1px solid color-mix(in srgb,var(--border) 70%,transparent);font-family:var(--font-mono);font-size:11px;vertical-align:top}
+table.pt td:first-child{font-family:var(--font-sans);font-size:11.5px;color:var(--muted-foreground);white-space:nowrap}
+table.pt tr.ch td:nth-child(3){color:var(--warning);font-weight:650}
+table.pt tr.bad td:nth-child(3){color:var(--destructive);font-weight:650}
+table.pt tr.ok td:nth-child(3){color:var(--success)}
+.verdict{margin-top:10px;font-size:12px;line-height:1.45;padding:8px 10px;border-radius:8px;background:color-mix(in srgb,var(--muted) 55%,transparent)}
+svg .ca{fill:none;stroke:var(--muted-foreground);stroke-width:2;stroke-dasharray:5 4}
+svg .cb{fill:none;stroke:var(--foreground);stroke-width:2}
+svg .pa{fill:none;stroke:color-mix(in srgb,var(--muted-foreground) 60%,transparent);stroke-width:1;stroke-dasharray:3 3}
+svg .pb{fill:none;stroke:color-mix(in srgb,var(--info) 70%,transparent);stroke-width:1}
+svg .dA{fill:var(--card);stroke:var(--muted-foreground);stroke-width:1.2}
+svg .dB{fill:var(--info)}
+svg .dM{fill:var(--warning);stroke:var(--foreground);stroke-width:1}
+svg .dN{fill:var(--success)}
+svg .wh{stroke:var(--warning);stroke-width:1}
+svg .ar{stroke:var(--warning);stroke-width:1.5;fill:none}
+svg .ahp{fill:var(--warning)}
+svg .lb{font-size:10.5px;fill:var(--muted-foreground);font-family:var(--font-mono)}
+svg .lb.w{fill:var(--warning);font-weight:700}
+svg .lb.g{fill:var(--success);font-weight:700}
+svg .lb.r{fill:var(--destructive);font-weight:700}
+
+.snap{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+@media (max-width:620px){.snap{grid-template-columns:1fr}}
+.snap .card{padding:12px 14px}
+.snap .k{font-size:13px;font-weight:650;margin-bottom:4px}
+.snap ul{margin:0;padding:0;list-style:none;font-size:12px;color:var(--muted-foreground);line-height:1.55}
+.snap li b{color:var(--foreground);font-weight:550}
+</style></head><body>
+<div class="wrap">
+  <div class="eyebrow">Follow-up · Geometry changes</div>
+  <h2>Yes: rebuilds, CV/vertex edits, topology. Each gets its own label.</h2>
+  <p class="lede">"Geometry changed" by itself isn't useful. Each changed pair goes through a short ladder of questions, so a rebuild that kept the shape is reported differently from a dragged control point or a solid that became open.</p>
+
+  <div class="card ladder">
+    <div class="lr"><div class="q"><span class="n">1</span><span>Geometry hash equal?<small>coordinates snapped to tolerance</small></span></div><div class="yes">yes →</div><div class="bk same"><b>Unchanged</b></div></div>
+    <div class="no">no ↓</div>
+    <div class="lr"><div class="q"><span class="n">2</span><span>Same shape within tolerance?<small>sampled deviation ≤ tol, even if the data differs</small></span></div><div class="yes">yes →</div><div class="bk dat"><b>Data-only</b><span>rebuilt · knots added · reparameterized · direction flipped · seam moved · NURBS ↔ polyline</span></div></div>
+    <div class="no">no ↓</div>
+    <div class="lr"><div class="q"><span class="n">3</span><span>Explained by a rigid transform?</span></div><div class="yes">yes →</div><div class="bk evt"><b>Moved / rotated / mirrored</b><span>reported as the transform</span></div></div>
+    <div class="no">no ↓</div>
+    <div class="lr"><div class="q"><span class="n">4</span><span>Same structure?<small>type · degree · CV count · knots · vertex count</small></span></div><div class="yes">yes →</div><div class="bk mod"><b>Edited</b><span>which CVs or vertices moved, and by how much (compared index by index)</span></div></div>
+    <div class="no">no ↓</div>
+    <div class="lr"><div class="q"><span class="n">5</span><span>Same topology?<small>faces · edges · naked edges · closed / solid</small></span></div><div class="yes">yes →</div><div class="bk mod"><b>Reshaped</b><span>deviation: max, mean, and where. Polylines use a vertex sequence diff</span></div></div>
+    <div class="lr" style="padding-top:0"><div></div><div class="yes">no →</div><div class="bk rem"><b>Topology changed</b><span>e.g. ⚠ solid became open, or a face was split or merged</span></div></div>
+    <div class="cost">Only step 1 runs on every pair, and it's a hash compare. Steps 2–5 run only on pairs whose hash differs, usually a few percent of the model, so the expensive deviation sampling stays cheap.</div>
+  </div>
+
+  <h3>Examples <span class="muted" style="font-weight:400;font-size:12.5px">· dashed = A, solid = B</span></h3>
+  <div class="tabs" id="tabs"></div>
+  <div class="card ex"><div class="viz"><svg id="viz" viewBox="0 0 400 200"></svg><div class="vleg" id="vleg"></div></div><div class="info" id="info"></div></div>
+
+  <h3>What the snapshot stores per geometry type</h3>
+  <div class="snap">
+    <div class="card"><div class="k">Curves</div><ul>
+      <li><b>type</b> · degree · CV count · knot hash</li><li><b>CV array</b> (for index-by-index diff)</li><li>closed · periodic · planar</li><li>length · start/end points · direction</li></ul></div>
+    <div class="card"><div class="k">Surfaces / Breps</div><ul>
+      <li><b>faces · edges · naked edges</b></li><li>solid? · area · volume · centroid</li><li>per face: CV grid size + hash</li><li>trim loops hash</li></ul></div>
+    <div class="card"><div class="k">Meshes / SubD</div><ul>
+      <li><b>vertex · face count</b></li><li>vertex array (index-by-index diff)</li><li>closed · manifold · welded</li><li>area · volume · bbox</li></ul></div>
+  </div>
+</div>
+
+<script>
+const SC=10; // 1 svg unit = 10 mm
+const f1=v=>v.toFixed(1), f0=v=>Math.round(v).toLocaleString();
+function clamped(n,p){const U=[];for(let i=0;i<=p;i++)U.push(0);for(let i=1;i<=n-p;i++)U.push(i);for(let i=0;i<=p;i++)U.push(n-p+1);return U;}
+function span(P,U,p,u){let k=p;while(k<P.length-1&&u>=U[k+1])k++;return k;}
+function ev(P,U,p,u){const k=span(P,U,p,u);const d=[];for(let j=0;j<=p;j++)d[j]=P[j+k-p].slice();
+  for(let r=1;r<=p;r++)for(let j=p;j>=r;j--){const i=j+k-p,a=(u-U[i])/(U[i+p-r+1]-U[i]);d[j]=[(1-a)*d[j-1][0]+a*d[j][0],(1-a)*d[j-1][1]+a*d[j][1]];}return d[p];}
+function ins(P,U,p,u){const k=span(P,U,p,u),Q=[];for(let i=0;i<=k-p;i++)Q.push(P[i]);
+  for(let i=k-p+1;i<=k;i++){const a=(u-U[i])/(U[i+p]-U[i]);Q.push([(1-a)*P[i-1][0]+a*P[i][0],(1-a)*P[i-1][1]+a*P[i][1]]);}
+  for(let i=k;i<P.length;i++)Q.push(P[i]);return [Q,U.slice(0,k+1).concat([u],U.slice(k+1))];}
+const samp=(P,U,p,N=80)=>{const e=U[U.length-1];return Array.from({length:N+1},(_,i)=>ev(P,U,p,e*i/N));};
+const pl=(pts,cls)=>`<polyline class="${cls}" points="${pts.map(q=>q.map(f1).join(',')).join(' ')}"/>`;
+const dots=(pts,cls,r=3.2)=>pts.map(q=>`<circle class="${cls}" cx="${f1(q[0])}" cy="${f1(q[1])}" r="${r}"/>`).join('');
+const len=pts=>pts.reduce((a,q,i)=>i?a+Math.hypot(q[0]-pts[i-1][0],q[1]-pts[i-1][1]):0,0);
+const dist=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);
+const DEFS=`<defs><marker id="ah" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L8,4 L0,8 z" class="ahp"/></marker></defs>`;
+const arrow=(a,b)=>{const L=dist(a,b),ux=(b[0]-a[0])/L,uy=(b[1]-a[1])/L;return `<path class="ar" d="M${f1(a[0]+ux*5)},${f1(a[1]+uy*5)} L${f1(b[0]-ux*6)},${f1(b[1]-uy*6)}" marker-end="url(#ah)"/>`;};
+const row=(k,a,b,c='')=>`<tr class="${c}"><td>${k}</td><td>${a}</td><td>${b}</td></tr>`;
+const table=rows=>`<table class="pt"><thead><tr><th>Property</th><th>A</th><th>B</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
+const LEG_CURVE=`<span><i style="border-color:var(--muted-foreground);border-top-style:dashed"></i>A curve</span><span><i style="border-color:var(--foreground)"></i>B curve</span><span><i style="border-color:color-mix(in srgb,var(--info) 70%,transparent)"></i>B control polygon</span>`;
+
+const PA=[[20,165],[75,40],[150,175],[230,45],[310,170],[380,55]], p=3, UA=clamped(5,3);
+const EX={
+ cv:{label:'CV edit',build(){
+   const PB=PA.map(q=>q.slice());PB[3]=[262,8];
+   const sa=samp(PA,UA,p),sb=samp(PB,UA,p);let mx=0,mi=0;sa.forEach((q,i)=>{const d=dist(q,sb[i]);if(d>mx){mx=d;mi=i;}});
+   let wh='';sa.forEach((q,i)=>{if(i%2)return;const d=dist(q,sb[i]);if(d<1)return;wh+=`<line class="wh" x1="${f1(q[0])}" y1="${f1(q[1])}" x2="${f1(sb[i][0])}" y2="${f1(sb[i][1])}" style="opacity:${(.2+.8*d/mx).toFixed(2)}"/>`;});
+   const svg=DEFS+pl(PA,'pa')+pl(PB,'pb')+wh+pl(sa,'ca')+pl(sb,'cb')+dots(PB.filter((_,i)=>i!==3),'dB')+dots([PA[3]],'dA')+arrow(PA[3],PB[3])+dots([PB[3]],'dM',4)
+     +`<text class="lb w" x="${PB[3][0]+8}" y="${PB[3][1]+10}">CV 3</text>`;
+   const d=dist(PA[3],PB[3])*SC;
+   return {svg,leg:LEG_CURVE+`<span><i style="border-color:var(--warning)"></i>deviation whiskers</span>`,kind:['mod','Edited'],title:'Curve C-07 · 1 CV moved',
+    rows:[row('Type','NURBS curve','NURBS curve'),row('Degree','3','3'),row('CV count','6','6'),row('Knots','#a1c4','#a1c4'),
+      row('CV 3','230, 45','262, 8','ch'),row('Δ CV 3','—',`${f0(d)} mm`,'ch'),row('Length',`${f0(len(sa)*SC)} mm`,`${f0(len(sb)*SC)} mm`,'ch'),row('Max deviation','—',`${f0(mx*SC)} mm`,'ch')],
+    note:'Same structure, so the CVs are compared index by index. The report names <b>which</b> CVs moved and by how much, and the whiskers show where the curve moved.'};}},
+ rb:{label:'Rebuild',build(){
+   let P=PA,U=UA;for(const u of [.5,1.5,2.5,.25,.75,1.25,1.75,2.25,2.75]){[P,U]=ins(P,U,p,u);}
+   const sa=samp(PA,UA,p),sb=samp(P,U,p);let mx=0;sa.forEach((q,i)=>mx=Math.max(mx,dist(q,sb[i])));
+   const svg=DEFS+pl(PA,'pa')+pl(P,'pb')+pl(sa,'ca')+pl(sb,'cb')+dots(PA,'dA',3.6)+dots(P,'dB',2.6)+`<text class="lb" x="200" y="196" text-anchor="middle">curve identical · control structure changed</text>`;
+   return {svg,leg:LEG_CURVE+`<span><i style="border-color:color-mix(in srgb,var(--muted-foreground) 60%,transparent);border-top-style:dashed"></i>A control polygon</span>`,kind:['dat','Data-only'],title:'Curve C-07 · rebuilt',
+    rows:[row('Type','NURBS curve','NURBS curve'),row('Degree','3','3'),row('CV count','6',String(P.length),'ch'),row('Knots','#a1c4','#77e0','ch'),
+      row('Length',`${f0(len(sa)*SC)} mm`,`${f0(len(sb)*SC)} mm`),row('Max deviation','—',`${(mx*SC).toFixed(2)} mm ≤ tol`,'ok')],
+    note:'The data changed but the shape didn\'t (within tolerance), so it goes in the <b>Data-only</b> bucket. It\'s collapsed by default, but it stays visible because CV count matters for fabrication and downstream GH logic.'};}},
+ pl:{label:'Polyline vertices',build(){
+   const A=[[20,150],[90,55],[160,135],[240,45],[310,150],[380,70]];
+   const B=[[20,150],[90,55],[160,135],[188,182],[214,92],[240,45],[318,104],[380,70]];
+   const svg=DEFS+pl(A,'ca')+pl(B,'cb')+dots([A[0],A[1],A[2],A[3],A[5]],'dA')+dots([B[3],B[4]],'dN',4.2)+dots([A[4]],'dA')+arrow(A[4],B[6])+dots([B[6]],'dM',4.2)
+     +[0,1,2].map(i=>`<text class="lb" x="${A[i][0]-4}" y="${A[i][1]-9}">v${i}</text>`).join('')
+     +`<text class="lb g" x="${B[3][0]+8}" y="${B[3][1]+2}">+ new</text><text class="lb g" x="${B[4][0]+8}" y="${B[4][1]+4}">+ new</text>`
+     +`<text class="lb" x="${A[3][0]-4}" y="${A[3][1]-9}">v3</text><text class="lb w" x="${B[6][0]+8}" y="${B[6][1]-4}">v4</text><text class="lb" x="${A[5][0]-4}" y="${A[5][1]-9}">v5</text>`;
+   const d=dist(A[4],B[6])*SC;
+   return {svg,leg:`<span><i style="border-color:var(--muted-foreground);border-top-style:dashed"></i>A</span><span><i style="border-color:var(--foreground)"></i>B</span><span style="color:var(--success)">● inserted</span><span style="color:var(--warning)">● moved</span>`,kind:['mod','Reshaped'],title:'Polyline PL-3 · vertex diff',
+    rows:[row('Type','Polyline','Polyline'),row('Vertex count','6','8','ch'),row('v0 – v2','=','='),row('Inserted','—','2 after v2','ch'),row('v3','=','='),row('v4','310, 150',`318, 104 (Δ ${f0(d)} mm)`,'ch'),row('v5','=','='),row('Closed','no','no')],
+    note:'The vertex count changed, so an index-by-index compare would call almost everything moved. Aligning the two vertex lists the way a text diff aligns lines gives the honest answer: <b>2 inserted, 1 moved, 5 untouched</b>.'};}},
+ srf:{label:'Surface CVs',build(){
+   const x0=30,y0=22,W=340,H=150,cols=24,rows=10;let cells='';let mx=0;
+   const dev=(u,v)=>12*Math.exp(-((u-.62)**2/.018+(v-.42)**2/.05));
+   for(let i=0;i<cols;i++)for(let j=0;j<rows;j++){const u=(i+.5)/cols,v=(j+.5)/rows,d=dev(u,v);mx=Math.max(mx,d);const t=d/12;
+     const fill=t<.5?`color-mix(in srgb,var(--warning) ${Math.round(t*2*100)}%,color-mix(in srgb,var(--muted-foreground) 14%,transparent))`:`color-mix(in srgb,var(--destructive) ${Math.round((t-.5)*2*100)}%,var(--warning))`;
+     cells+=`<rect x="${f1(x0+i*W/cols)}" y="${f1(y0+j*H/rows)}" width="${f1(W/cols+.3)}" height="${f1(H/rows+.3)}" style="fill:${fill}"/>`;}
+   let cv='';const moved=[[4,2],[5,2],[4,3]];
+   for(let i=0;i<8;i++)for(let j=0;j<6;j++){const x=x0+i*W/7,y=y0+j*H/5,m=moved.some(q=>q[0]===i&&q[1]===j);cv+=`<circle class="${m?'dM':'dA'}" cx="${f1(x)}" cy="${f1(y)}" r="${m?4.2:2.6}"/>`;}
+   let legend='';for(let k=0;k<=10;k++){const t=k/10;const fill=t<.5?`color-mix(in srgb,var(--warning) ${Math.round(t*200)}%,color-mix(in srgb,var(--muted-foreground) 14%,transparent))`:`color-mix(in srgb,var(--destructive) ${Math.round((t-.5)*200)}%,var(--warning))`;legend+=`<rect x="${250+k*10}" y="182" width="10.3" height="8" style="fill:${fill}"/>`;}
+   const svg=`<rect x="${x0}" y="${y0}" width="${W}" height="${H}" fill="none" stroke="var(--border)"/>`+cells+cv+legend+`<text class="lb" x="245" y="190" text-anchor="end">0 mm</text><text class="lb" x="364" y="190">12</text><text class="lb" x="${x0}" y="192">deviation on B</text>`;
+   return {svg,leg:`<span style="color:var(--warning)">● moved CV</span><span>○ unchanged CV</span><span>fill = distance from A</span>`,kind:['mod','Edited'],title:'Surface S-12 · 3 CVs moved',
+    rows:[row('Type','NURBS surface','NURBS surface'),row('CV grid','8 × 6','8 × 6'),row('CVs moved','—','3 · (4,2) (5,2) (4,3)','ch'),row('Max deviation','—','12.0 mm @ u .62 v .42','ch'),row('Mean deviation','—','0.9 mm','ch'),row('Area','24.00 m²','24.07 m²','ch')],
+    note:'For surfaces the most readable view is a <b>deviation color map</b> on the surface (similar to Rhino\'s analysis modes), plus the list of CVs that moved. A rebuilt surface would show a nearly flat map and land in Data-only.'};}},
+ topo:{label:'Topology',build(){
+   const c=Math.cos(Math.PI/6),s=30,ox=200,oy=110;const P=(x,y,z)=>[(x-y)*c*s+ox,(x+y)*.5*s-z*s+oy];
+   const poly=(pts,st)=>`<polygon points="${pts.map(q=>P(...q).map(f1).join(',')).join(' ')}" style="${st}"/>`;
+   const L=4,D=2.4,Hh=2.2;
+   const svg=poly([[0,D,0],[L,D,0],[L,D,Hh],[0,D,Hh]],'fill:color-mix(in srgb,var(--muted-foreground) 22%,transparent);stroke:var(--muted-foreground)')
+     +poly([[L,0,0],[L,D,0],[L,D,Hh],[L,0,Hh]],'fill:color-mix(in srgb,var(--muted-foreground) 14%,transparent);stroke:var(--muted-foreground)')
+     +poly([[0,0,Hh],[L,0,Hh],[L,D,Hh],[0,D,Hh]],'fill:color-mix(in srgb,var(--destructive) 8%,transparent);stroke:var(--destructive);stroke-dasharray:5 4')
+     +`<polyline points="${[[0,0,Hh],[L,0,Hh],[L,D,Hh],[0,D,Hh],[0,0,Hh]].map(q=>P(...q).map(f1).join(',')).join(' ')}" style="fill:none;stroke:var(--destructive);stroke-width:3;opacity:.85"/>`
+     +`<text class="lb r" x="${f1(P(L/2,D/2,Hh)[0])}" y="${f1(P(L/2,D/2,Hh)[1]+4)}" text-anchor="middle">top face missing</text>`
+     +`<text class="lb r" x="${f1(P(L,0,Hh)[0]+10)}" y="${f1(P(L,0,Hh)[1])}">naked edges ×4</text>`;
+   return {svg,leg:`<span style="color:var(--destructive)">━ naked edges</span><span style="color:var(--destructive)">┅ face present in A only</span>`,kind:['rem','Topology changed'],title:'Brep Room-04 · solid → open',
+    rows:[row('Type','Brep','Brep'),row('Faces','6','5','bad'),row('Edges','12','12'),row('Naked edges','0','4','bad'),row('Closed solid','yes','no','bad'),row('Volume','21.1 m³','—','bad'),row('Area','49.0 m²','40.2 m²','ch')],
+    note:'Flagged as <b>⚠ solid became open</b>, one of the accidental-change detectors. These breaks are easy to miss by eye and tend to break volume takeoffs, booleans and export later on.'};}},
+};
+let cur='cv';
+function show(k){cur=k;document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.k===k));
+  const r=EX[k].build();document.getElementById('viz').innerHTML=r.svg;document.getElementById('vleg').innerHTML=r.leg;
+  document.getElementById('info').innerHTML=`<div class="hd"><span class="pill ${r.kind[0]}">${r.kind[1]}</span><b>${r.title}</b></div>${table(r.rows)}<div class="verdict">${r.note}</div>`;}
+document.getElementById('tabs').innerHTML=Object.entries(EX).map(([k,v])=>`<button data-k="${k}">${v.label}</button>`).join('');
+document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>show(b.dataset.k));
+show('cv');
+</script>
+</body></html>
