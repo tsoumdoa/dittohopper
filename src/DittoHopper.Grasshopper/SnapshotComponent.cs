@@ -47,7 +47,7 @@ public sealed class SnapshotComponent : DittoComponent
             GH_ParamAccess.item);
         p[0].Optional = true;
         p.AddTextParameter("Layers", "Layers",
-            "Only objects on these layers. " + LayerGlob.Help + " Filter both sides the same way: an object that left the " +
+            "Only objects on these layers. " + LayerPatterns.Help + " Filter both sides the same way: an object that left the " +
             "filtered layers shows as removed.",
             GH_ParamAccess.list);
         p[1].Optional = true;
@@ -73,7 +73,7 @@ public sealed class SnapshotComponent : DittoComponent
     {
         string? source = null;
         da.GetData(0, ref source);
-        var glob = new LayerGlob(Texts(da, 1));
+        var glob = new LayerPatterns(Texts(da, 1));
         bool saved = false;
         da.GetData(2, ref saved);
         if (saved && !string.IsNullOrWhiteSpace(source))
@@ -164,7 +164,7 @@ public sealed class SnapshotComponent : DittoComponent
     }
 
     /// <summary>Keeps matching layers (and their parents, so paths stay whole) and the objects on matching layers.</summary>
-    private RhinoSnapshot Filter(RhinoSnapshot s, LayerGlob glob)
+    private RhinoSnapshot Filter(RhinoSnapshot s, LayerPatterns glob)
     {
         var key = (s, string.Join("\n", glob.Text));
         usedViews.Add(key);

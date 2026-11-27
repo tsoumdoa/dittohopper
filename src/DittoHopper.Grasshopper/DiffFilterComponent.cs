@@ -6,10 +6,17 @@ namespace DittoHopper.Grasshopper;
 /// <summary>Picks changed objects out of a diff by kind of change and by layer, with a line of evidence for each.</summary>
 public sealed class DiffFilterComponent : DittoComponent
 {
-    /// <summary>Kinds besides the property names, which are the same as Diff Settings' Ignore.</summary>
-    private static readonly string[] ObjectKinds = ["added", "removed", "modified", "flagged"];
+    /// <summary>Kinds besides the property names (the same as Diff Settings' Ignore) and the detector ids.</summary>
+    private static readonly string[] ObjectKinds = ["added", "removed", "modified", "flagged", "needs look", "review"];
 
-    public static IEnumerable<string> Kinds => ObjectKinds.Concat(Vocabulary.Names);
+    /// <summary>Core's detector ids, as they appear in a change set's flags.</summary>
+    public static readonly string[] DetectorIds =
+    [
+        Detectors.OutsideScope, Detectors.DefaultLayer, Detectors.TinyNudge, Detectors.ByLayerOverride, Detectors.Duplicate,
+        Detectors.LockedOrHiddenLayer, Detectors.LoneDeletion, Detectors.MassChange, Detectors.FuzzyMatch,
+    ];
+
+    public static IEnumerable<string> Kinds => ObjectKinds.Concat(Vocabulary.Names).Concat(DetectorIds);
 
     public DiffFilterComponent()
         : base("Diff Filter", "Filter",
@@ -26,13 +33,15 @@ public sealed class DiffFilterComponent : DittoComponent
     {
         p.AddGenericParameter("Result", "Result", "Result of Model Diff.", GH_ParamAccess.item);
         p.AddTextParameter("Kind", "Kind",
-            $"Kinds of change to keep: {string.Join(", ", Kinds)} (moved is placement), or a detector flag. Several: any of them. " +
-            "Empty: every change. Table events, such as a block definition edited directly or a layer renamed, are not objects: " +
-            "they are listed in Model Diff's Events.",
+            $"Kinds of change to keep: added, removed, modified; a property ({string.Join(", ", Vocabulary.Names)}; moved is placement); " +
+            $"flagged (any detector), needs look (flagged and not yet intended) or a detector ({string.Join(", ", DetectorIds)}); " +
+            "review (fuzzy pairings to check; a pairing alone is not a change). Several: any of them. Empty: every change and pairing to review. " +
+            "Table events, such as a block definition edited directly or a layer renamed, are not objects: they are listed in " +
+            "Model Diff's Events.",
             GH_ParamAccess.list);
         p[1].Optional = true;
         p.AddTextParameter("Layers", "Layers",
-            "Only objects on these layers, before or after the change. " + LayerGlob.Help, GH_ParamAccess.list);
+            "Only objects on these layers, before or after the change. " + LayerPatterns.Help, GH_ParamAccess.list);
         p[2].Optional = true;
     }
 
@@ -50,20 +59,19 @@ public sealed class DiffFilterComponent : DittoComponent
     {
         var run = Input<DiffRun>(da, 0, "a Model Diff Result");
         if (run is null) return;
-        var layers = new LayerGlob(Texts(da, 2));
+        var layers = new LayerPatterns(Texts(da, 2));
 
-        var flags = run.Result.ChangeSets.SelectMany(s => s.Flags).Select(Vocabulary.Normalize).ToHashSet();
+        var other = ObjectKinds.Concat(DetectorIds).Select(Vocabulary.Normalize).ToHashSet();
         var kinds = new List<string>();
         var unknown = new List<string>();
         foreach (var raw in Texts(da, 1).Where(k => !string.IsNullOrWhiteSpace(k)))
         {
             string k = Vocabulary.Canonical(raw) ?? Vocabulary.Normalize(raw);
-            if (Vocabulary.Canonical(raw) is null && !ObjectKinds.Contains(k) && !flags.Contains(k)) unknown.Add(raw.Trim());
+            if (Vocabulary.Canonical(raw) is null && !other.Contains(k)) unknown.Add(raw.Trim());
             else kinds.Add(k);
         }
         if (unknown.Count > 0)
-            AddRuntimeMessage(GH_RuntimeMessageLevel.Warning,
-                $"Unknown kind {string.Join(", ", unknown)}, and no change is flagged that way. Use: {string.Join(", ", Kinds)}.");
+            AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"Unknown kind {string.Join(", ", unknown)}. Use: {string.Join(", ", Kinds)}.");
 
         var rows = Select(run, kinds, layers);
         double scale = run.BToA;
@@ -77,7 +85,7 @@ public sealed class DiffFilterComponent : DittoComponent
     public sealed record Row(ObjectPair Pair, string Info);
 
     /// <summary>One row per object, in change-set order, combining every matching change on it.</summary>
-    public static List<Row> Select(DiffRun run, IReadOnlyCollection<string> kinds, LayerGlob layers)
+    public static List<Row> Select(DiffRun run, IReadOnlyCollection<string> kinds, LayerPatterns layers)
     {
         var changes = new Dictionary<ObjectPair, List<string>>();
         var order = new List<ObjectPair>();
@@ -99,7 +107,7 @@ public sealed class DiffFilterComponent : DittoComponent
                     _ => set.Change is { } c ? Describe.Change(c, run.GeometryOf(pair)) : "changed",
                 };
                 if (set.RootCauseEventId is { } cause && events.TryGetValue(cause, out var e)) text += $" ({Describe.Cause(e)})";
-                if (set.Flags.Count > 0) text += $" [flagged: {string.Join(", ", set.Flags)}]";
+                if (set.Flags.Count > 0 && !Describe.IsPairing(set)) text += $" [flagged: {Describe.Flags(set.Flags)}]";
                 list.Add(text);
             }
         return [.. order.Select(p => new Row(p, Info(run, p, changes[p])))];
@@ -119,8 +127,10 @@ public sealed class DiffFilterComponent : DittoComponent
     {
         "added" => s.Kind == ChangeKind.Added,
         "removed" => s.Kind == ChangeKind.Removed,
-        "modified" => s.Kind == ChangeKind.Modified,
+        "modified" => s.Kind == ChangeKind.Modified && !Describe.IsPairing(s),
         "flagged" => s.Flags.Count > 0,
+        "needslook" => s.NeedsLook,
+        "review" => Describe.IsPairing(s) || s.Flags.Contains(Detectors.FuzzyMatch), // a fuzzy pair, changed or not
         _ => (s.Kind == ChangeKind.Modified && s.Change is { } c && Vocabulary.KindsOf(kind).Contains(c.Property))
             || s.Flags.Any(f => Vocabulary.Normalize(f) == kind),
     };

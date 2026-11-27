@@ -9,7 +9,7 @@ public sealed class DiffSettingsComponent : DittoComponent
 {
     public DiffSettingsComponent()
         : base("Diff Settings", "Settings",
-            "What Model Diff compares and how. Optional: Model Diff uses these defaults without it.",
+            "What Model Diff compares and how, and what you meant to change (Scope). Optional: Model Diff uses these defaults without it.",
             DiffPanel)
     { }
 
@@ -34,6 +34,12 @@ public sealed class DiffSettingsComponent : DittoComponent
             "Properties not to compare: " + string.Join(", ", Vocabulary.Names) + ". Print width and display order are ignored by default.",
             GH_ParamAccess.list);
         p[2].Optional = true;
+        p.AddTextParameter("Scope", "Scope",
+            "I meant to change: a layer pattern such as Facade::* (every layer under Facade). Changes on any other layer are " +
+            "flagged outside-scope and come first, and the summary says what changed outside it. * matches any text, :: " +
+            "included; ? one character; case is ignored. Empty: no scope.",
+            GH_ParamAccess.item);
+        p[3].Optional = true;
     }
 
     protected override void RegisterOutputParams(GH_OutputParamManager p) =>
@@ -46,6 +52,8 @@ public sealed class DiffSettingsComponent : DittoComponent
         double tol = double.NaN;
         da.GetData(1, ref tol);
         var ignore = Texts(da, 2);
+        string? scope = null;
+        da.GetData(3, ref scope);
 
         if (string.IsNullOrWhiteSpace(key)) key = DiffSettings.DefaultStableKey;
         double? shapeTolerance = null;
@@ -63,8 +71,13 @@ public sealed class DiffSettingsComponent : DittoComponent
             AddRuntimeMessage(GH_RuntimeMessageLevel.Warning,
                 $"Unknown property {string.Join(", ", unknown)}. Use: {string.Join(", ", Vocabulary.Names)}.");
 
-        var settings = new DiffSettings { StableKey = key.Trim(), ShapeTolerance = shapeTolerance, Toggles = toggles };
-        // M3 adds the Scope input after Ignore, setting settings.ScopeGlob.
+        var settings = new DiffSettings
+        {
+            StableKey = key.Trim(),
+            ShapeTolerance = shapeTolerance,
+            Toggles = toggles,
+            ScopeGlob = string.IsNullOrWhiteSpace(scope) ? null : scope.Trim(),
+        };
         da.SetData(0, new SettingsGoo(settings));
     }
 }
@@ -127,6 +140,7 @@ public static class Vocabulary
     {
         var ignored = Properties.Where(p => !p.Get(s.Toggles)).Select(p => p.Name).ToList();
         string tol = s.ShapeTolerance is double t ? t.ToString("0.######", CultureInfo.InvariantCulture) : "auto";
-        return $"Key {s.StableKey} · Tolerance {tol} · Ignoring {(ignored.Count == 0 ? "nothing" : string.Join(", ", ignored))}";
+        return $"Key {s.StableKey} · Tolerance {tol} · Ignoring {(ignored.Count == 0 ? "nothing" : string.Join(", ", ignored))}" +
+            (s.ScopeGlob is { } scope ? $" · Scope {scope}" : "");
     }
 }

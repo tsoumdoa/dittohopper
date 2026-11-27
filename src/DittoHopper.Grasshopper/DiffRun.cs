@@ -48,7 +48,7 @@ public sealed class DiffRun
 
     public IReadOnlyList<Guid> Added => index.Value.Added;
     public IReadOnlyList<Guid> Removed => index.Value.Removed;
-    /// <summary>Modified pairs, each once, in change-set order.</summary>
+    /// <summary>Modified pairs, each once, in change-set order. A pairing to review is not a modification.</summary>
     public IReadOnlyList<ObjectPair> Modified => index.Value.Modified;
 
     /// <summary>Multiplies B's lengths into A's units (1 when they agree or can't be converted).</summary>
@@ -117,7 +117,8 @@ public sealed class DiffRun
                 {
                     if (set.Kind == ChangeKind.Added && pair.B is Guid b) Added.Add(b);
                     else if (set.Kind == ChangeKind.Removed && pair.A is Guid a) Removed.Add(a);
-                    else if (set.Kind == ChangeKind.Modified && seen.Add(pair)) Modified.Add(pair);
+                    // A fuzzy pairing on its own is review, not a change.
+                    else if (set.Kind == ChangeKind.Modified && !Describe.IsPairing(set) && seen.Add(pair)) Modified.Add(pair);
                 }
         }
 

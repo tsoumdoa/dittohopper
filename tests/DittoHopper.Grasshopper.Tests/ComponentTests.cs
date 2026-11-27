@@ -107,12 +107,14 @@ public sealed class ComponentTests(RhinoHost host, ITestOutputHelper output)
         using var doc = d.Doc;
 
         foreach (var c in new GH_Component[] { d.A, d.B, d.Diff, d.Filter, d.Gate, d.Whole, d.Preview })
-            Assert.True(c.RuntimeMessageLevel < GH_RuntimeMessageLevel.Warning, $"{c.Name}: {Gh.Errors(c)}");
+            Assert.True(Gh.Errors(c).Length == 0, $"{c.Name}: {Gh.Errors(c)}"); // remarks (header notes) are fine
         Assert.Equal("A.3dm", d.A.Message);
 
         string report = d.Result.ToString();
         output.WriteLine(report);
-        Assert.StartsWith("2 of 3 objects identical · 2 change sets · 0 table events", report);
+        Assert.StartsWith("2 of 3 objects are identical.", report);
+        Assert.Contains("2 change sets · 0 table events", report);
+        Assert.Contains("Layers: ", report);
         Assert.Contains("shape tolerance 0.01 (auto)", report);
         Assert.Contains("Matched 3 by key", report); // names unique in both models: pass 1
         Assert.Contains("• 1 object on Walls: moved 500 mm in X", report);
@@ -129,7 +131,7 @@ public sealed class ComponentTests(RhinoHost host, ITestOutputHelper output)
         Assert.Matches(@"^W-01 · moved 500 mm in X · Walls · \d+ properties unchanged · matched by key$", info);
 
         Assert.True(d.Pass(d.Gate));
-        Assert.Equal(["Nothing on Structure::* changed: 2 objects checked."], Gh.Texts(d.Gate, 1));
+        Assert.Equal(["Nothing on Structure::* changed: 1 object checked."], Gh.Texts(d.Gate, 1)); // the column; the slab is on Structure itself
         Assert.False(d.Pass(d.Whole));
         Assert.Equal(["1 object on Walls: moved 500 mm in X", "1 object added on Walls"], Gh.Texts(d.Whole, 1));
 
@@ -144,6 +146,20 @@ public sealed class ComponentTests(RhinoHost host, ITestOutputHelper output)
         SetGate(d, "Strcture::*");
         Assert.False(d.Pass(d.Gate));
         Assert.StartsWith("No layer in A or B matches Strcture::*", Assert.Single(Gh.Texts(d.Gate, 1)));
+
+        // Scope: what I meant to change. Nothing outside Walls changed.
+        var settings = Gh.Add<DiffSettingsComponent>(d.Doc);
+        Gh.Set(settings.Params.Input[3], new GH_String("Walls"));
+        Gh.Wire(settings.Params.Output[0], d.Diff.Params.Input[2]);
+        Gh.Solve(d.Doc);
+        Assert.StartsWith("Nothing outside Walls changed.", d.Result.ToString());
+        Gh.Set(settings.Params.Input[3], new GH_String("Structure::*"));
+        Gh.Solve(d.Doc);
+        output.WriteLine(d.Result.ToString());
+        Assert.StartsWith("Outside Structure::*, 2 objects changed in 2 sets.", d.Result.ToString());
+        Assert.Contains(Gh.Texts(d.Filter, 1), i => i.Contains("[flagged: Outside the declared scope]", StringComparison.Ordinal));
+        d.Diff.Params.Input[2].RemoveAllSources();
+        Gh.Solve(d.Doc);
 
         // Re-solving with the same file versions reuses the cached snapshots and the diff.
         var before = d.Result.Value;
@@ -276,6 +292,38 @@ public sealed class ComponentTests(RhinoHost host, ITestOutputHelper output)
         Assert.Equal("+0 −0 ~0 · 1 event", d.Diff.Message);
         Assert.Equal(1, d.Statuses[DiffPreviewComponent.Status.Event]);
         Assert.Equal(1, d.Statuses[DiffPreviewComponent.Status.Unchanged]);
+    });
+
+    [RhinoFact]
+    public void AFuzzyPairingIsForReviewNotAChange() => host.Run(() =>
+    {
+        Gh.Load();
+        // Rebuilt with a new GUID and a slightly taller shape: only matching pass 5 (fuzzy) can pair it.
+        var pair = FixturePair.CreateFromScratch("gh-fuzzy", f => Box(f, 3000), f => Box(f, 3150));
+        var d = Solve(pair, kind: "review", gate: "Walls");
+        using var doc = d.Doc;
+        string report = d.Result.ToString();
+        output.WriteLine(report);
+        output.WriteLine(string.Join(System.Environment.NewLine, Gh.Texts(d.Whole, 1)));
+
+        Assert.Contains("1 pairing needs review.", report);
+        Assert.Contains("• Pairings to review: 1 fuzzy match", report);
+        Assert.DoesNotContain("pairing needs review ·", report);
+        Assert.EndsWith(" · 1 to review", d.Diff.Message);
+        var info = Assert.Single(Gh.Texts(d.Filter, 1));
+        Assert.Contains("pairing needs review", info);
+        Assert.Matches(@"matched by fuzzy 0\.\d\d · needs review$", info);
+        Assert.False(d.Pass(d.Gate));
+        Assert.Contains(Gh.Texts(d.Gate, 1), w => w.EndsWith("pairing needs review", StringComparison.Ordinal));
+        // The pairing gets no colour of its own: the box is amber only for its real shape change.
+        Assert.DoesNotContain(d.Preview.Items, i => i.Status == DiffPreviewComponent.Status.Removed || i.Status == DiffPreviewComponent.Status.Added);
+
+        static void Box(File3dm f, double height)
+        {
+            Model.Setup(f);
+            int walls = Model.Layer(f, "Walls");
+            Model.Add(f, Brep.CreateFromBox(new BoundingBox(new Point3d(0, 0, 0), new Point3d(4000, 200, height))), walls, "wall");
+        }
     });
 
     [RhinoFact]

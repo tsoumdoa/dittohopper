@@ -94,7 +94,9 @@ public sealed class ModelDiffComponent : DittoComponent
         da.SetDataList(3, run.Result.TableEvents.Select(Describe.Event));
         da.SetData(4, new ResultGoo(run));
 
-        Message = $"+{run.Added.Count} −{run.Removed.Count} ~{run.Modified.Count} · {Describe.Plural(run.Result.TableEvents.Count, "event")}";
+        int review = run.Result.Matches.Count(m => m.NeedsReview);
+        Message = $"+{run.Added.Count} −{run.Removed.Count} ~{run.Modified.Count} · {Describe.Plural(run.Result.TableEvents.Count, "event")}" +
+            (review > 0 ? $" · {review} to review" : "");
     }
 
     public override void RemovedFromDocument(GH_Document document)

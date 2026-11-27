@@ -8,22 +8,16 @@ public static class Describe
 {
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
+    /// <summary>A Pairing set is review of a fuzzy pairing, not a change.</summary>
+    public static bool IsPairing(ChangeSet s) => s.Change?.Property == PropertyKind.Pairing;
+
     /// <summary>
-    /// The one-line summary: "2,104 of 2,416 objects identical · 6 change sets · 3 table events".
-    /// Stub until M3's summary helper lands in Core; then this forwards to it.
+    /// Core's Level 1 sentence (<see cref="DiffSummary.Sentence"/>), then the counts: change sets (pairings to review
+    /// are not changes) and table events.
     /// </summary>
-    public static string Summary(DiffResult r)
-    {
-        var parts = new List<string>
-        {
-            $"{Count(r.UnchangedObjects)} of {Count(ObjectsInA(r))} objects identical",
-            Plural(r.ChangeSets.Count, "change set"),
-            Plural(r.TableEvents.Count, "table event"),
-        };
-        int flagged = r.ChangeSets.Count(s => s.Flags.Count > 0);
-        if (flagged > 0) parts.Add($"{Count(flagged)} flagged");
-        return string.Join(" · ", parts);
-    }
+    public static string Summary(DiffResult r) =>
+        DiffSummary.Sentence(r) + Environment.NewLine +
+        $"{Plural(r.ChangeSets.Count(s => !IsPairing(s)), "change set")} · {Plural(r.TableEvents.Count, "table event")}";
 
     /// <summary>Objects in A: matched or removed.</summary>
     public static int ObjectsInA(DiffResult r) =>
@@ -56,25 +50,38 @@ public static class Describe
             lines.Add($"{Plural(dataOnly, "object")} with the same shape but different data (rebuilt, flipped…): not counted as changes");
         lines.AddRange(r.Header.Notes);
 
+        var layers = DiffSummary.Layers(r);
+        if (layers.Count > 0)
+            lines.Add($"Layers: {Count(layers.Count(l => l.State == LayerState.Untouched))} untouched, " +
+                $"{Count(layers.Count(l => l.State == LayerState.Expected))} changed as expected, " +
+                $"{Count(layers.Count(l => l.State == LayerState.ToCheck))} to check");
+
         var events = r.TableEvents.ToDictionary(e => e.Id);
-        var sets = r.ChangeSets.OrderByDescending(c => c.Flags.Count > 0).ToList(); // stable: keeps the result's order within each group
+        // Changes that need a look first; the sort is stable, so the result's order holds within each group.
+        var sets = r.ChangeSets.Where(c => !IsPairing(c)).OrderByDescending(c => c.NeedsLook).ToList();
+        int pairings = r.Matches.Count(m => m.NeedsReview);
+        if (pairings > 0)
+            lines.Add($"• Pairings to review: {Count(pairings)} fuzzy {(pairings == 1 ? "match" : "matches")}, not counted as changes (Diff Filter, Kind review)");
         foreach (var set in sets.Take(ReportedSets))
         {
-            IEnumerable<string> layers = set.Layer is { } l ? [l] : layersOf?.Invoke(set) ?? [];
+            IEnumerable<string> on = set.Layer is { } l ? [l] : layersOf?.Invoke(set) ?? [];
             string? cause = set.RootCauseEventId is { } id && events.TryGetValue(id, out var e) ? Cause(e) : null;
-            lines.Add("• " + Set(set, set.Objects.Count, layers) + (cause is null ? "" : $" · cause: {cause}"));
+            lines.Add("• " + Set(set, set.Objects.Count, on) + (cause is null ? "" : $" · cause: {cause}"));
         }
         if (sets.Count > ReportedSets)
             lines.Add($"• …and {Plural(sets.Count - ReportedSets, "more change set")}: use Diff Filter to list them.");
         return string.Join(Environment.NewLine, lines);
     }
 
-    /// <summary>The evidence badge for a match: GUID, key, hash, shape 0.93, fuzzy 0.81.</summary>
+    /// <summary>The evidence badge for a match: GUID, key, hash, shape 0.93, "fuzzy 0.81 · needs review".</summary>
     public static string Evidence(Match m) => m.By switch
     {
         MatchedBy.ShapeSignature or MatchedBy.Fuzzy => Badge(m.By) + " " + m.Confidence.ToString("0.00", Inv),
         _ => Badge(m.By),
-    };
+    } + (m.NeedsReview ? " · needs review" : "");
+
+    /// <summary>Detector flags in words, from Core.</summary>
+    public static string Flags(IEnumerable<string> flags) => string.Join("; ", flags.Select(Detectors.Describe));
 
     private static string Badge(MatchedBy by) => by switch
     {
@@ -137,6 +144,7 @@ public static class Describe
         PropertyKind.UserText when c.To is null => $"user text − {c.Key}",
         PropertyKind.UserText => $"user text {c.Key}: {c.From} → {c.To}",
         PropertyKind.BlockContent => $"nested block {c.Key} changed",
+        PropertyKind.Pairing => "pairing needs review",
         _ => $"{Name(c.Property)} {Value(c.From, c.FromSource)} → {Value(c.To, c.ToSource)}",
     };
 
@@ -153,7 +161,8 @@ public static class Describe
             ChangeKind.Removed => $"{Plural(count, "object")} removed from {s.Layer}",
             _ => $"{Plural(count, "object")}{where}: {(s.Change is { } c ? Change(c) : "changed")}",
         };
-        if (s.Flags.Count > 0) text += " · flagged: " + string.Join(", ", s.Flags);
+        // A pairing's only flag is fuzzy-match, which its text already says.
+        if (s.Flags.Count > 0 && !IsPairing(s)) text += " · flagged: " + Flags(s.Flags);
         return text;
     }
 

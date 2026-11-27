@@ -8,7 +8,7 @@ namespace DittoHopper.Grasshopper.Tests;
 public sealed class TextTests
 {
     [Theory]
-    [InlineData("Structure::*", "Structure", true)]
+    [InlineData("Structure::*", "Structure", false)] // Core's rule: the parent itself is not under it
     [InlineData("Structure::*", "Structure::Columns", true)]
     [InlineData("Structure::*", "structure::columns::L1", true)]
     [InlineData("Structure::*", "Structures", false)]
@@ -19,14 +19,14 @@ public sealed class TextTests
     [InlineData("Default", "Default", true)]
     [InlineData("Default", "Default::Sub", false)]
     public void LayerGlobMatchesPaths(string pattern, string path, bool expected) =>
-        Assert.Equal(expected, new LayerGlob([pattern]).Matches(path));
+        Assert.Equal(expected, new LayerPatterns([pattern]).Matches(path));
 
     [Fact]
     public void EmptyGlobMatchesEverythingAndSeveralMatchAny()
     {
-        Assert.True(new LayerGlob([]).Matches("anything"));
-        Assert.True(new LayerGlob(["", " "]).MatchesAll);
-        var glob = new LayerGlob(["Walls", "Doors::*"]);
+        Assert.True(new LayerPatterns([]).Matches("anything"));
+        Assert.True(new LayerPatterns(["", " "]).MatchesAll);
+        var glob = new LayerPatterns(["Walls", "Doors::*"]);
         Assert.True(glob.Matches("Doors::Frames"));
         Assert.False(glob.Matches("Windows"));
         Assert.Equal("Walls, Doors::*", glob.ToString());
@@ -47,6 +47,7 @@ public sealed class TextTests
         Assert.Equal("Key mark · Tolerance 0.5 · Ignoring placement, display order, color, print width, user text",
             Vocabulary.Describe(new DiffSettings { StableKey = "mark", ShapeTolerance = 0.5, Toggles = toggles }));
         Assert.Equal("Key diff:uid · Tolerance auto · Ignoring display order, print width", Vocabulary.Describe(new DiffSettings()));
+        Assert.EndsWith(" · Scope Facade::*", Vocabulary.Describe(new DiffSettings { ScopeGlob = "Facade::*" }));
     }
 
     [Fact]
@@ -65,7 +66,8 @@ public sealed class TextTests
 
         var r = ModelDiff.Diff(a.Build(), b.Build());
 
-        Assert.Equal("2 of 5 objects identical · 3 change sets · 1 table event", Describe.Summary(r));
+        Assert.Equal(DiffSummary.Sentence(r) + Environment.NewLine + "3 change sets · 1 table event", Describe.Summary(r));
+        Assert.StartsWith("2 of 5 objects are identical.", Describe.Summary(r));
         Assert.Equal(["Layer renamed: Walls → A-WALL · 3 objects"], r.TableEvents.Select(Describe.Event));
         var changes = r.ChangeSets.Where(s => s.Change is not null).Select(s => Describe.Change(s.Change!)).ToList();
         Assert.Contains("layer Walls → Default", changes);

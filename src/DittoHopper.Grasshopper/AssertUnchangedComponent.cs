@@ -21,7 +21,7 @@ public sealed class AssertUnchangedComponent : DittoComponent
     protected override void RegisterInputParams(GH_InputParamManager p)
     {
         p.AddGenericParameter("Result", "Result", "Result of Model Diff.", GH_ParamAccess.item);
-        p.AddTextParameter("Layers", "Layers", "Layers that must not change. " + LayerGlob.Help.Replace("Empty: every layer.", "Empty: the whole model."),
+        p.AddTextParameter("Layers", "Layers", "Layers that must not change. " + LayerPatterns.Help.Replace("Empty: every layer.", "Empty: the whole model."),
             GH_ParamAccess.list);
         p[1].Optional = true;
     }
@@ -42,7 +42,7 @@ public sealed class AssertUnchangedComponent : DittoComponent
     {
         var run = Input<DiffRun>(da, 0, "a Model Diff Result");
         if (run is null) return;
-        var glob = new LayerGlob(Texts(da, 1));
+        var glob = new LayerPatterns(Texts(da, 1));
 
         var (pass, why) = Check(run, glob);
         if (!glob.MatchesAll && !MatchesAnyLayer(run, glob))
@@ -52,11 +52,11 @@ public sealed class AssertUnchangedComponent : DittoComponent
         Message = pass ? "Pass" : "Fail";
     }
 
-    private static bool MatchesAnyLayer(DiffRun run, LayerGlob glob) =>
+    private static bool MatchesAnyLayer(DiffRun run, LayerPatterns glob) =>
         run.LayerPathsA.Values.Concat(run.LayerPathsB.Values).Any(glob.Matches);
 
     /// <summary>The gate: every change set and table event that touches a matching layer fails it, one line each.</summary>
-    public static (bool Pass, List<string> Why) Check(DiffRun run, LayerGlob glob)
+    public static (bool Pass, List<string> Why) Check(DiffRun run, LayerPatterns glob)
     {
         if (!glob.MatchesAll && !MatchesAnyLayer(run, glob))
             return (false, [$"No layer in A or B matches {glob}, so nothing was checked. Check the spelling."]);
@@ -80,7 +80,7 @@ public sealed class AssertUnchangedComponent : DittoComponent
         return (true, [$"Nothing on {glob} changed: {Describe.Plural(checkedObjects, "object")} checked."]);
     }
 
-    private static bool Touches(DiffRun run, TableEvent e, LayerGlob glob)
+    private static bool Touches(DiffRun run, TableEvent e, LayerPatterns glob)
     {
         if (glob.MatchesAll) return true;
         var (a, b) = (run.A.Model, run.B.Model);

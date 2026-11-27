@@ -8,6 +8,8 @@
     <IsPackable>false</IsPackable>
     <!-- RhinoHost boots without /safemode, so Grasshopper can load. -->
     <DefineConstants>$(DefineConstants);DITTOHOPPER_GRASSHOPPER_TESTS</DefineConstants>
+    <!-- The linked SnapshotBuilder has fields only other Core test files assign. -->
+    <NoWarn>$(NoWarn);CS0649</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <!-- Compile against the .gha but keep it out of deps.json (CoreCLR won't start with a .gha listed there).
