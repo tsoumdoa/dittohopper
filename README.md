@@ -29,6 +29,8 @@ dotnet test DittoHopper.sln -c Debug    # Rhino-free tests
 git config core.hooksPath .githooks     # local pre-commit build + test
 ```
 
+Rhino integration tests are opt-in; see [tests/DittoHopper.Rhino.Tests](tests/DittoHopper.Rhino.Tests/README.md).
+
 Requires the .NET 8 SDK or later. There is no cloud CI: the pre-commit hook builds and
 tests every commit that touches code.
 
