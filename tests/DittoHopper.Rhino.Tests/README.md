@@ -25,6 +25,21 @@ try {
 
 A cold run takes about 5 s, and about 3.7 s of that is the RhinoCore boot.
 
+## Grasshopper tests
+
+`tests/DittoHopper.Grasshopper.Tests` shares this harness (`RhinoHost`, `FixturePair` and `Model`
+are linked in) and the same variable. It boots RhinoCore without `/safemode`, because
+Grasshopper is a plug-in, then loads the built `.gha` and solves real definitions: every
+component loads with its icon and stable GUID; Snapshot → Model Diff → Diff Filter, Assert
+Unchanged and Diff Preview on a generated pair; and Snapshot and Stamp IDs on a headless document.
+Its plain tests (layer patterns, settings names, result wording) always run.
+
+```powershell
+$env:DITTOHOPPER_RHINO_TESTS = '1'
+try { dotnet test tests/DittoHopper.Grasshopper.Tests -c Debug }
+finally { Remove-Item Env:DITTOHOPPER_RHINO_TESTS -ErrorAction SilentlyContinue }
+```
+
 ## Fixture pairs
 
 No `.3dm` file is committed. `FixturePair` writes each A/B pair into a temp folder for the run,

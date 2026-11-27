@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Grasshopper component tests. The headless ones are skipped unless DITTOHOPPER_RHINO_TESTS=1 (see README.md). -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <UseWindowsForms>true</UseWindowsForms>
+    <IsTestProject>true</IsTestProject>
+    <IsPackable>false</IsPackable>
+    <!-- RhinoHost boots without /safemode, so Grasshopper can load. -->
+    <DefineConstants>$(DefineConstants);DITTOHOPPER_GRASSHOPPER_TESTS</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Compile against the .gha but keep it out of deps.json (CoreCLR won't start with a .gha listed there).
+         It is copied beside the tests below, where RhinoHost's resolver loads it. -->
+    <ProjectReference Include="../../src/DittoHopper.Grasshopper/DittoHopper.Grasshopper.csproj" Private="false" />
+    <ProjectReference Include="../../src/DittoHopper.Rhino/DittoHopper.Rhino.csproj" />
+    <Compile Include="../DittoHopper.Rhino.Tests/RhinoHost.cs" Link="RhinoHost.cs" />
+    <Compile Include="../DittoHopper.Rhino.Tests/FixturePair.cs" Link="FixturePair.cs" />
+    <Compile Include="../DittoHopper.Rhino.Tests/Model.cs" Link="Model.cs" />
+    <Compile Include="../DittoHopper.Core.Tests/SnapshotBuilder.cs" Link="SnapshotBuilder.cs" />
+    <PackageReference Include="Grasshopper" Version="$(RhinoApiVersion)" ExcludeAssets="runtime" />
+    <PackageReference Include="RhinoCommon" Version="$(RhinoApiVersion)" ExcludeAssets="runtime" />
+    <Reference Update="Grasshopper;GH_IO;RhinoCommon"><Private>false</Private></Reference>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.0.2" PrivateAssets="all" />
+  </ItemGroup>
+  <Target Name="CopyGha" AfterTargets="Build">
+    <Copy SourceFiles="../../src/DittoHopper.Grasshopper/bin/$(Configuration)/net8.0-windows/DittoHopper.Grasshopper.gha" DestinationFolder="$(OutDir)" />
+  </Target>
+</Project>
