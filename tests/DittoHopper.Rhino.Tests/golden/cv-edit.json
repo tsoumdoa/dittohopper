@@ -25,6 +25,7 @@
   "settings": {
     "stableKey": "diff:uid",
     "layerInferShare": 0.6,
+    "fuzzyThreshold": 0.75,
     "toggles": {
       "placement": true,
       "shape": true,

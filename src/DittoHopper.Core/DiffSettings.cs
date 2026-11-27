@@ -20,6 +20,9 @@ public sealed record DiffSettings
     /// </summary>
     public double? ShapeTolerance { get; init; }
 
+    /// <summary>The lowest score at which matching pass 5 pairs two objects. Such pairs need review.</summary>
+    public double FuzzyThreshold { get; init; } = 0.75;
+
     public PropertyToggles Toggles { get; init; } = new();
 }
 

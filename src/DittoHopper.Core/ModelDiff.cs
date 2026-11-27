@@ -4,7 +4,7 @@ namespace DittoHopper.Core;
 
 /// <summary>
 /// Entry point of the diff engine: a pure function from two snapshots and settings to a <see cref="DiffResult"/>.
-/// Pipeline: match tables (id, path, name) → match objects (passes 1–3) → infer layers and match groups from
+/// Pipeline: match tables (id, path, name) → match objects (passes 1–5) → infer layers and match groups from
 /// where the objects went → table events → compare pairs through the table maps → group into change sets.
 /// </summary>
 public static class ModelDiff
@@ -75,6 +75,8 @@ internal sealed class DiffContext
         Settings = settings;
         if (settings.ShapeTolerance is double s && !(s > 0 && double.IsFinite(s)))
             throw new ArgumentOutOfRangeException(nameof(settings), "ShapeTolerance must be a positive number, or null.");
+        if (!(settings.FuzzyThreshold > 0 && settings.FuzzyThreshold <= 1))
+            throw new ArgumentOutOfRangeException(nameof(settings), "FuzzyThreshold must be above 0 and at most 1.");
         (Header, Scale) = MakeHeader(a.Info, b.Info, hasBlocks: a.Blocks.Count + b.Blocks.Count > 0);
         double grid = Math.Max(a.Info.HashGrid, b.Info.HashGrid * Scale);
         HashProvesUnchanged = ShapeTolerance >= grid * (1 - 1e-9);

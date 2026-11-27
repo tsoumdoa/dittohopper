@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace DittoHopper.Core;
 
 /// <summary>
@@ -88,8 +90,13 @@ public sealed record TableEvent
 
 public enum MatchedBy { StableKey, Guid, GeometryHash, ShapeSignature, Fuzzy, Manual }
 
-/// <summary>One A object paired with one B object, with the evidence for it.</summary>
-public sealed record Match(Guid A, Guid B, MatchedBy By, double Confidence, int UnchangedProperties);
+/// <summary>One A object paired with one B object, with the evidence for it. Fuzzy pairs carry their score as confidence.</summary>
+public sealed record Match(Guid A, Guid B, MatchedBy By, double Confidence, int UnchangedProperties)
+{
+    /// <summary>A fuzzy pair (matching pass 5): plausible, not certain, so it belongs in the review bucket.</summary>
+    [JsonIgnore]
+    public bool NeedsReview => By == MatchedBy.Fuzzy;
+}
 
 /// <summary>What a change is about. Object properties and table properties share one vocabulary.</summary>
 public enum PropertyKind
