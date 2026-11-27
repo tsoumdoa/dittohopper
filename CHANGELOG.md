@@ -16,3 +16,7 @@
   vertex sequence diff, Reshaped with deviation, Topology changed with what broke), with the topology summary
   measured once into the snapshot signature; accidental-change detectors in `ChangeSet.Flags`
   (`ScopeGlob`, `NudgeFactor`) and `NeedsLook`; per-layer rows and the Level 1 summary sentence (`DiffSummary`).
+- Grasshopper components (M4): Snapshot (files cached per version; the live document; the last
+  save), Diff Settings, Model Diff, Diff Filter, Diff Preview, Assert Unchanged and the opt-in
+  Stamp IDs, on a DittoHopper tab with icons drawn in code. Yak packaging (`tools/Pack-Yak.ps1`)
+  and headless Grasshopper tests.

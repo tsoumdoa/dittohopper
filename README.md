@@ -13,13 +13,32 @@ object rows. Objects are matched by a cascade (stable key, GUID, geometry hash, 
 and every pair records how it was matched and how sure that is. Likely accidents (a stray
 nudge, objects dropped on `Default`, a select-all edit) are flagged first.
 
-**Status: in development.** Nothing is released yet. See the [design](docs/design.md) for
-the full spec and roadmap.
+**Status: early beta.** See the [design](docs/design.md) for the full spec and roadmap.
 
-## Requirements
+## Install
 
 Rhino 8.20 or later on Windows, running .NET 8 (use Rhino's `SetDotNetRuntime` command if
 needed). macOS, Rhino 7 and .NET Framework are not supported yet.
+
+Drop the `.yak` file onto a Rhino window, accept the installation, and restart Rhino. The
+components are on Grasshopper's **DittoHopper** tab.
+
+## Components
+
+| Component | Inputs | Outputs | What it does |
+| --- | --- | --- | --- |
+| Snapshot | Source, Layers, Saved | Snap | Captures a `.3dm` file (cached until the file changes), or the open document when Source is empty. Saved = True takes the document as last saved |
+| Diff Settings | Key, Tol, Ignore | Cfg | Optional: the stable-key name, shape tolerance (empty = auto) and properties to ignore |
+| Model Diff | A, B, Cfg | Added, Removed, Modified, Events, Result | Diffs A (before) against B (after). A Panel on Result shows the summary |
+| Diff Filter | Result, Kind, Layer | Objects, Info | Changed objects by kind (`moved`, `layer`, `color`, `added`…) and layer; Info says what changed and how each was matched |
+| Diff Preview | Result, Ghost A | | Draws the diff: added green, removed red, modified amber, layer or block changes blue, unchanged grey |
+| Assert Unchanged | Result, Layers | Pass, Why | A QA gate: fails, with reasons, if anything on those layers changed |
+| Stamp IDs | Objects, Key, Run | Objects | Writes a `diff:uid` into objects that lack one, only while Run is True. The only component that changes the model |
+
+Layer patterns such as `Structure::*` cover the whole `Structure` tree; `*` matches any text.
+
+**Try it:** two Snapshots (one with Source set to the last revision's `.3dm`, one with Source
+empty for the open document) into Model Diff A and B, a Panel on Result, and Diff Preview.
 
 ## Build
 
