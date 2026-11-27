@@ -63,7 +63,7 @@ internal static class GeometryLadder
             {
                 Level = GeometryLevel.Moved,
                 Detail = RigidFit.Describe(fit.Transform, ctx.Header.Units, tol),
-                Rigid = fit.Transform,
+                Rigid = Round(fit.Transform, tol),
                 MaxDeviation = Round(moved.Max, tol),
                 MeanDeviation = moved.Mean is double mean ? Round(mean, tol) : null,
             };
@@ -75,6 +75,13 @@ internal static class GeometryLadder
     {
         double margin = 2 * tol;
         return Vec3.Distance(a.Min, b.Min * scale) <= margin * Math.Sqrt(3) && Vec3.Distance(a.Max, b.Max * scale) <= margin * Math.Sqrt(3);
+    }
+
+    /// <summary>A fitted transform without float noise: rotation entries to 1e-12, translation to a millionth of the tolerance.</summary>
+    private static Xform Round(Xform x, double tol)
+    {
+        int decimals = Math.Clamp((int)Math.Ceiling(-Math.Log10(tol)) + 6, 0, 15);
+        return new Xform([.. x.Values.Select((v, i) => Math.Round(v, i is 3 or 7 or 11 ? decimals : 12) + 0.0)]);
     }
 
     /// <summary>Deviations to a thousandth of the tolerance: finer digits are sampling noise and would churn golden files.</summary>
