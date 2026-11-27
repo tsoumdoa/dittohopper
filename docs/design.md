@@ -92,6 +92,7 @@ Match objects with a cascade of signals, cheapest and most certain first. Use th
 - **Identity is not change.** Matching decides which object is which; comparing decides what changed. A pair matched by geometry hash has unchanged geometry by definition, so only its attributes can differ.
 - **Every pair carries evidence.** Store `matchedBy` and `confidence` on each pair and show them in the UI as a badge (`GUID`, `hash`, `fuzzy 0.91`). Low-confidence pairs go to a review bucket instead of being shown as certain.
 - **Users can unlink and relink pairs.** A wrong pairing is worse than an honest added + removed pair.
+- **Kind families.** Extrusion, Surface and Brep are one family, since the same solid is stored either way. Passes 2, 4 and 5 compare within a family, so an extrusion converted to a Brep keeps its pair and is Data-only ("Extrusion ↔ Brep"). Every other kind is its own family.
 - **Stamp IDs is opt-in.** A Stamp IDs command or component writes `diff:uid` into user text on objects that lack one. Bakes that carry it forward let pass 1 catch almost everything. It runs only when the user asks (decided), because it writes to the model.
 
 ## Tables: layers, blocks, materials, linetypes, groups
@@ -199,7 +200,7 @@ Each detector flags a whole change set, and a flagged set goes to "Needs a look"
 | Lone deletion | A few objects removed from a layer where nothing else changed | ≤ 3 objects (starting value) | Stray Delete key |
 | Mass identical change | The same change on many objects across unrelated layers | ≥ 3 layers (starting value) | Select-all, then a change |
 
-Rule: a set needs a look when it is not yet marked intended, and it is either flagged or outside scope.
+Rule: a set needs a look when it is not yet marked intended, and it is either flagged or outside scope. Sets that hold fuzzy pairs (pass 5) are flagged too, so a low-confidence pairing never reads as certain.
 
 ## UX
 
