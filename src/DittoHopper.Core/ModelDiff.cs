@@ -102,7 +102,7 @@ internal sealed class DiffContext
 
         // Grids compare as lengths: a 1 mm grid and a 0.001 m grid snap the same points to the same integers.
         bool gridsMatch = Units.MetersPer(a.Units) is double ga && Units.MetersPer(b.Units) is double gb
-            ? Math.Abs(a.HashGrid * ga - b.HashGrid * gb) <= 1e-9 * Math.Max(a.HashGrid * ga, b.HashGrid * gb)
+            ? Math.Abs(a.HashGrid * ga - b.HashGrid * gb) <= 1e-12 * Math.Max(a.HashGrid * ga, b.HashGrid * gb)
             : a.Units == b.Units && a.HashGrid == b.HashGrid;
         if (!gridsMatch)
         {
@@ -179,7 +179,7 @@ internal sealed class Side
         {
             var d = stack.Pop();
             if (set.Add(d) && BlockById.TryGetValue(d, out var block))
-                foreach (var n in block.NestedBlockIds) stack.Push(n);
+                foreach (var n in block.Nested) stack.Push(n.DefinitionId);
         }
         return closures[def] = set;
     }

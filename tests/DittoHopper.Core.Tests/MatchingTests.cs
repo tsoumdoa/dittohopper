@@ -183,6 +183,34 @@ public class MatchingTests
     }
 
     [Fact]
+    public void Pass1_CentroidBeatsAttributesForCopiedTags()
+    {
+        var a = new SnapshotBuilder();
+        var layer = a.Layer("L");
+        int blueColor = unchecked((int)0xFF0000FF);
+        var atZero = a.Object(layer, o => o with { UserText = Uid("t"), Color = new Sourced<int>(Fixtures.Red, ValueSource.ByObject) }, at: new Vec3(0, 0, 0));
+        var atFar = a.Object(layer, o => o with { UserText = Uid("t"), Color = new Sourced<int>(blueColor, ValueSource.ByObject) }, at: new Vec3(1000, 0, 0));
+        var b = a.Clone();
+        // Re-baked in place, with their colors swapped.
+        var atFar2 = b.Rebake(atFar);
+        var atZero2 = b.Rebake(atZero);
+        b.Edit(atZero2, o => o with { Color = new Sourced<int>(blueColor, ValueSource.ByObject) });
+        b.Edit(atFar2, o => o with { Color = new Sourced<int>(Fixtures.Red, ValueSource.ByObject) });
+
+        var r = ModelDiff.Diff(a.Build(), b.Build());
+        AssertPairs(r, MatchedBy.StableKey, (atZero, atZero2), (atFar, atFar2));
+        Assert.Equal([PropertyKind.Color, PropertyKind.Color], r.ChangeSets.Select(s => s.Change!.Property));
+    }
+
+    [Fact]
+    public void GridsDifferingBeyondFloatNoiseAreNotComparable()
+    {
+        var (a, b) = Fixtures.GhRebake();
+        b.Info = b.Info with { HashGrid = 0.010000000005 };
+        Assert.False(Fixtures.Diff((a, b)).Header.HashGridsMatch);
+    }
+
+    [Fact]
     public void HashGridsCompareAsLengths()
     {
         var (a, b) = Fixtures.GhRebake();

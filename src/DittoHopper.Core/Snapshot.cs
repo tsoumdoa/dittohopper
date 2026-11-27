@@ -75,15 +75,22 @@ public sealed record BlockRecord
     public required string Name { get; init; }
 
     /// <summary>
-    /// Hash of the definition's own objects. A nested instance contributes only its transform and attributes,
-    /// never the nested definition's id, name or content: which definitions are nested is compared through
-    /// the block map from <see cref="NestedBlockIds"/>, so an inner edit or rename changes only the inner entry.
+    /// Hash of the definition's own objects. A nested instance contributes only its placement (transform and
+    /// attributes), never the nested definition's id, name or content. Which definition sits at which
+    /// placement is in <see cref="Nested"/>, compared through the block map, so an inner edit or rename
+    /// changes only the inner entry.
     /// </summary>
     public ulong ContentHash { get; init; }
 
-    /// <summary>Definitions referenced directly by instances inside this one.</summary>
-    public IReadOnlyList<Guid> NestedBlockIds { get; init; } = [];
+    /// <summary>One entry per nested instance inside this definition (repeats allowed), in any order.</summary>
+    public IReadOnlyList<NestedBlock> Nested { get; init; } = [];
 }
+
+/// <summary>
+/// A nested instance: the definition it places, and a hash of its placement (transform and attributes, the
+/// same data it contributes to the parent's <see cref="BlockRecord.ContentHash"/>, on the snapshot's hash grid).
+/// </summary>
+public readonly record struct NestedBlock(Guid DefinitionId, ulong PlacementHash);
 
 /// <summary>A group. Membership lives on the objects (<see cref="ObjectRecord.GroupIds"/>).</summary>
 public sealed record GroupRecord

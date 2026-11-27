@@ -201,9 +201,85 @@ public class CompareTests
         var r = ModelDiff.Diff(a.Build(), b.Build());
         // Both render as "A, B" → none, but one left a group that still exists and the other lost two deleted groups.
         Assert.Equal(2, r.ChangeSets.Count);
-        Assert.Null(r.ChangeSets.Single(s => s.Objects[0].A == leaves).RootCauseEventId);
-        var deleted = r.TableEvents.Where(e => e.Kind == TableEventKind.Removed).Select(e => e.Id).ToList();
-        Assert.Contains(r.ChangeSets.Single(s => s.Objects[0].A == orphaned).RootCauseEventId, deleted);
+        Assert.Single(r.ChangeSets, s => s.Objects.Single().A == leaves);
+        Assert.Single(r.ChangeSets, s => s.Objects.Single().A == orphaned);
+    }
+
+    [Fact]
+    public void GroupCauseNeedsExactlyOneExplainingEvent()
+    {
+        var a = new SnapshotBuilder();
+        var layer = a.Layer("L");
+        var ga = a.Group("A");
+        var gb = a.Group("B");
+        var inBoth = a.Object(layer, o => o with { GroupIds = [ga, gb] });
+        var inA = a.Object(layer, o => o with { GroupIds = [ga] });
+        var b = a.Clone();
+        b.Groups.Clear();
+        b.Edit(inBoth, o => o with { GroupIds = [] });
+        b.Edit(inA, o => o with { GroupIds = [] });
+
+        var r = ModelDiff.Diff(a.Build(), b.Build());
+        // Two independent deletes explain inBoth's row; neither is the cause. One delete explains inA's.
+        Assert.Null(r.ChangeSets.Single(s => s.Objects.Single().A == inBoth).RootCauseEventId);
+        var deleteA = r.TableEvents.Single(e => e.A == ga).Id;
+        Assert.Equal(deleteA, r.ChangeSets.Single(s => s.Objects.Single().A == inA).RootCauseEventId);
+    }
+
+    [Fact]
+    public void SwappedOrReassignedNestedPlacementsAreDefinitionEdits()
+    {
+        var a = new SnapshotBuilder();
+        var layer = a.Layer("L");
+        var x = a.Block("InnerX", content: 1);
+        var y = a.Block("InnerY", content: 2);
+        var parent = a.Block("Parent", content: 3);
+        a.EditBlock(parent, d => d with { Nested = [new(x, 100), new(y, 200)] });
+        a.Instance(layer, parent);
+
+        // Same placements, same set of nested definitions, but X and Y trade places.
+        var swapped = a.Clone();
+        swapped.EditBlock(parent, d => d with { Nested = [new(y, 100), new(x, 200)] });
+        var e = Assert.Single(ModelDiff.Diff(a.Build(), swapped.Build()).TableEvents);
+        Assert.Equal((PropertyKind.Content, "Parent"), (e.Property, e.Label));
+
+        // One of three placements moves to a definition the parent already uses.
+        var three = a.Clone();
+        three.EditBlock(parent, d => d with { Nested = [new(x, 100), new(x, 200), new(y, 300)] });
+        var reassigned = three.Clone();
+        reassigned.EditBlock(parent, d => d with { Nested = [new(x, 100), new(y, 200), new(y, 300)] });
+        Assert.Single(ModelDiff.Diff(three.Build(), reassigned.Build()).TableEvents, ev => ev.Label == "Parent");
+
+        // Listing the same occurrences in another order is no change.
+        var reordered = a.Clone();
+        reordered.EditBlock(parent, d => d with { Nested = [new(y, 200), new(x, 100)] });
+        Assert.Empty(ModelDiff.Diff(a.Build(), reordered.Build()).TableEvents);
+    }
+
+    [Fact]
+    public void SplitPriorityIsReRankedAfterEachClaim()
+    {
+        var a = new SnapshotBuilder();
+        var other = a.Layer("Other");
+        var alpha = a.Layer("Alpha");
+        var beta = a.Layer("Beta");
+        var gamma = a.Layer("Gamma");
+        var b = a.Clone();
+        var (lx, ly, lz, lw, lv) = (b.Layer("X"), b.Layer("Y"), b.Layer("Z"), b.Layer("W"), b.Layer("V"));
+        void Flow(Guid from, Guid to, int count)
+        {
+            foreach (var id in a.Many(from, count)) b.Objects.Add(a.Objects.Single(o => o.Id == id) with { LayerId = to });
+        }
+        Flow(alpha, lx, 5); Flow(alpha, ly, 5);                                   // Alpha: 100%
+        Flow(beta, lx, 2); Flow(beta, lz, 4); Flow(beta, lw, 3); Flow(beta, other, 1); // Beta: 90%, 70% once X is gone
+        Flow(gamma, lz, 4); Flow(gamma, lv, 3); Flow(gamma, other, 1);            // Gamma: 87.5%
+        foreach (var l in new[] { alpha, beta, gamma }) b.RemoveLayer(l);
+
+        var splits = ModelDiff.Diff(a.Build(), b.Build()).TableEvents.Where(e => e.Kind == TableEventKind.Split)
+            .ToDictionary(e => e.A!.Value, e => e.Shares.Select(s => s.B).ToList());
+        // Alpha takes X; Gamma (87.5%) now beats Beta (70%) to Z; Beta keeps only W, too little to split.
+        Assert.Equal([alpha, gamma], splits.Keys.Order());
+        Assert.Equal([lz, lv], splits[gamma].Order());
     }
 
     [Fact]
@@ -274,7 +350,7 @@ public class CompareTests
 
         // Middle swapping Inner for Other (same own hash) is an edit of Middle.
         var swapped = a.Clone();
-        swapped.EditBlock(middle, d => d with { NestedBlockIds = [other] });
+        swapped.EditBlock(middle, d => d with { Nested = [new NestedBlock(other, 0)] });
         var e = Assert.Single(ModelDiff.Diff(a.Build(), swapped.Build()).TableEvents);
         Assert.Equal((TableEventKind.PropertyChanged, PropertyKind.Content, "Middle"), (e.Kind, e.Property, e.Label));
 

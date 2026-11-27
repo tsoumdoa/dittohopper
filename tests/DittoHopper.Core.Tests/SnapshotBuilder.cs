@@ -56,7 +56,7 @@ internal sealed class SnapshotBuilder
     public Guid Block(string name, ulong content = 1, params Guid[] nested)
     {
         var id = NewId();
-        Blocks.Add(new BlockRecord { Id = id, Name = name, ContentHash = content, NestedBlockIds = nested });
+        Blocks.Add(new BlockRecord { Id = id, Name = name, ContentHash = content, Nested = [.. nested.Select((d, i) => new NestedBlock(d, (ulong)i))] });
         return id;
     }
 

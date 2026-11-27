@@ -137,9 +137,9 @@ internal sealed class Comparer
     }
 
     /// <summary>
-    /// Group membership through the group map. The cause is a group's removal or addition only when those
-    /// events explain the whole difference: every A group still holds the object or was deleted, and every
-    /// new B group is a group that was added.
+    /// Group membership through the group map. The cause is a group's removal or addition only when exactly
+    /// one such event explains the whole difference: every A group still holds the object or is that deleted
+    /// group, and every new B group is that added group.
     /// </summary>
     private (bool Same, string? Cause) CompareGroups(ObjectRecord a, ObjectRecord b)
     {
@@ -167,7 +167,7 @@ internal sealed class Comparer
             if (ctx.AddedEvent.TryGetValue((TableKind.Group, g), out var ev)) events.Add(ev);
             else explained = false;
         }
-        return (same, same || !explained ? null : events.Order(StringComparer.Ordinal).FirstOrDefault());
+        return (same, explained && events.Count == 1 ? events[0] : null);
     }
 
     private static string? GroupList(Side side, IReadOnlyList<Guid> groups) =>

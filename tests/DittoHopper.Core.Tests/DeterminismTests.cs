@@ -78,7 +78,7 @@ public class DeterminismTests
     private static ModelSnapshot Shuffle(ModelSnapshot s, Random rng) => s with
     {
         Layers = Mix(s.Layers, rng),
-        Blocks = Mix(s.Blocks, rng).Select(d => d with { NestedBlockIds = Mix(d.NestedBlockIds, rng) }).ToList(),
+        Blocks = Mix(s.Blocks, rng).Select(d => d with { Nested = Mix(d.Nested, rng) }).ToList(),
         Materials = Mix(s.Materials, rng),
         Linetypes = Mix(s.Linetypes, rng),
         Groups = Mix(s.Groups, rng),

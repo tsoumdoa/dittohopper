@@ -47,25 +47,28 @@ internal static class TableDiff
             if (!ctx.Layers.HasA(c.A) && !ctx.Layers.HasB(c.B))
                 ctx.Layers.Add(c.A, c.B, TableMatchedBy.Inferred, c.Share);
 
-        // Splits: the best-covered candidate claims its targets first; ties stay in A path order.
+        // Splits: the best-covered candidate claims its targets, then the rest are re-ranked on what is still
+        // free. Ties stay in A path order.
+        var remaining = ordered.Where(f => !ctx.Layers.HasA(f.Key)).ToList();
+        while (true)
+        {
+            var best = remaining
+                .Select(f => (Flow: f, Targets: FreeTargets(f.Value)))
+                .Select(c => (c.Flow, c.Targets, Covered: c.Targets.Sum(t => t.Count) / (double)c.Flow.Value.Values.Sum()))
+                .Where(c => c.Targets.Count >= 2 && c.Covered >= threshold)
+                .OrderByDescending(c => c.Covered)
+                .FirstOrDefault();
+            if (best.Targets is null)
+                break;
+            ctx.Splits[best.Flow.Key] = new LayerSplit(best.Targets, best.Flow.Value.Values.Sum());
+            ctx.SplitTargetLayers.UnionWith(best.Targets.Select(t => t.B));
+            remaining.Remove(best.Flow);
+        }
+
         List<(Guid B, int Count)> FreeTargets(Dictionary<Guid, int> flow) => [.. flow
             .Where(kv => !ctx.Layers.HasB(kv.Key) && !ctx.SplitTargetLayers.Contains(kv.Key))
             .OrderBy(kv => ctx.B.LayerPath[kv.Key], StringComparer.Ordinal)
             .Select(kv => (kv.Key, kv.Value))];
-        double Covered(List<(Guid B, int Count)> targets, Dictionary<Guid, int> flow) =>
-            targets.Sum(t => t.Count) / (double)flow.Values.Sum();
-        var splitCandidates = ordered
-            .Where(f => !ctx.Layers.HasA(f.Key))
-            .OrderByDescending(f => Covered(FreeTargets(f.Value), f.Value))
-            .ToList();
-        foreach (var (aLayer, flow) in splitCandidates)
-        {
-            var targets = FreeTargets(flow);
-            if (targets.Count < 2 || Covered(targets, flow) < threshold)
-                continue;
-            ctx.Splits[aLayer] = new LayerSplit(targets, flow.Values.Sum());
-            ctx.SplitTargetLayers.UnionWith(targets.Select(t => t.B));
-        }
     }
 
     /// <summary>Minimum Jaccard overlap of matched members for two groups to be the same group.</summary>
@@ -185,15 +188,20 @@ internal static class TableDiff
     }
 
     /// <summary>
-    /// A definition changed itself when its own content hash differs (only comparable on matching hash grids)
-    /// or when the definitions nested in it differ through the block map.
+    /// A definition changed itself when its own content hash differs, or when its nested occurrences differ:
+    /// the multiset of (definition through the block map, placement). Hashes only compare on matching grids,
+    /// so across grids only the nested definitions are counted.
     /// </summary>
     private static bool DefinitionChanged(DiffContext ctx, BlockRecord da, BlockRecord db)
     {
-        if (ctx.Header.HashGridsMatch && da.ContentHash != db.ContentHash)
+        bool grids = ctx.Header.HashGridsMatch;
+        if (grids && da.ContentHash != db.ContentHash)
             return true;
-        var nestedA = da.NestedBlockIds.Select(ctx.Blocks.Map).ToHashSet();
-        return nestedA.Contains(null) || !nestedA.SetEquals(db.NestedBlockIds.Select(id => (Guid?)id));
+        var nestedA = da.Nested.Select(n => (Def: ctx.Blocks.Map(n.DefinitionId), Placement: grids ? n.PlacementHash : 0));
+        var nestedB = db.Nested.Select(n => (Def: (Guid?)n.DefinitionId, Placement: grids ? n.PlacementHash : 0));
+        static IEnumerable<(Guid? Def, ulong Placement)> Sorted(IEnumerable<(Guid? Def, ulong Placement)> x) =>
+            x.OrderBy(n => n.Def).ThenBy(n => n.Placement);
+        return nestedA.Any(n => n.Def is null) || !Sorted(nestedA).SequenceEqual(Sorted(nestedB));
     }
 
     private static void BlockEvents(DiffContext ctx)

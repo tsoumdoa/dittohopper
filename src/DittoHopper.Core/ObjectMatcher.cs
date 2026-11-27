@@ -2,8 +2,8 @@ namespace DittoHopper.Core;
 
 /// <summary>
 /// The matching cascade, cheapest and most certain first. Each pass sees only objects no earlier pass claimed.
-/// Within a pass, ties (several candidates for one key) break by: same GUID and kind, same mapped layer, most
-/// equal own attributes, nearest centroid, then GUID order.
+/// Within a pass, ties (several candidates for one key) break the same way: same GUID and kind, same mapped
+/// layer, nearest centroid (to tolerance), most equal own attributes, then GUID order.
 /// </summary>
 internal sealed class ObjectMatcher
 {
@@ -77,7 +77,8 @@ internal sealed class ObjectMatcher
 
     /// <summary>
     /// Pairs candidates that all share one key, best-ranked pair first: same GUID and kind (a copy keeps its
-    /// original's key but not its GUID), same mapped layer, most equal own attributes, nearest centroid, GUID order.
+    /// original's key but not its GUID), same mapped layer, nearest centroid, most equal own attributes, GUID
+    /// order. Distances are counted in tolerance steps, so coincident candidates tie and attributes decide.
     /// </summary>
     private IEnumerable<(ObjectRecord A, ObjectRecord B)> BreakTies(List<ObjectRecord> a, List<ObjectRecord> b,
         Func<ObjectRecord, ObjectRecord, bool> allowed)
@@ -90,8 +91,8 @@ internal sealed class ObjectMatcher
             where allowed(x, y)
             orderby x.Id == y.Id && x.Kind == y.Kind ? 0 : 1,
                 ctx.Layers.Map(x.LayerId) == y.LayerId ? 0 : 1,
+                DistanceSteps(x, y),
                 -Agreement(x, y),
-                Vec3.Distance(x.Geometry.Centroid, y.Geometry.Centroid * ctx.Scale),
                 x.Id, y.Id
             select (x, y);
         var usedA = new HashSet<Guid>();
@@ -105,6 +106,12 @@ internal sealed class ObjectMatcher
                 chosen.Add((x, y));
             }
         return chosen;
+    }
+
+    private double DistanceSteps(ObjectRecord x, ObjectRecord y)
+    {
+        double d = Vec3.Distance(x.Geometry.Centroid, y.Geometry.Centroid * ctx.Scale);
+        return ctx.Tolerance > 0 ? Math.Round(d / ctx.Tolerance) : d;
     }
 
     /// <summary>How many own attributes are equal: name, color, material, linetype, user text (stable keys aside).</summary>
