@@ -12,5 +12,17 @@ public sealed class AssemblyInfo : GH_AssemblyInfo
     public override string AuthorName => "aectooling by tomoS";
     public override string AuthorContact => "https://github.com/tsoumdoa/dittohopper";
     public override GH_LibraryLicense License => GH_LibraryLicense.opensource;
-    public override Bitmap? Icon => null;
+    public override Bitmap Icon => Icons.Logo(24);
+    public override string Version => typeof(AssemblyInfo).Assembly.GetName().Version?.ToString(3) ?? "";
+}
+
+/// <summary>Gives the DittoHopper tab its icon.</summary>
+public sealed class DittoHopperPriority : GH_AssemblyPriority
+{
+    public override GH_LoadingInstruction PriorityLoad()
+    {
+        global::Grasshopper.Instances.ComponentServer.AddCategoryIcon(DittoComponent.Tab, Icons.Logo(16));
+        global::Grasshopper.Instances.ComponentServer.AddCategorySymbolName(DittoComponent.Tab, 'D');
+        return GH_LoadingInstruction.Proceed;
+    }
 }

@@ -1,8 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <!-- The Grasshopper components. Rhino and Grasshopper assemblies come from Rhino at run time. -->
   <PropertyGroup>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <TargetExt>.gha</TargetExt>
+    <!-- Copy NuGet dependencies Rhino doesn't ship (System.IO.Hashing) next to the .gha, for the Yak payload. -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../DittoHopper.Core/DittoHopper.Core.csproj" />
