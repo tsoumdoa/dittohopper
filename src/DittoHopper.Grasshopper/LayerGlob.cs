@@ -10,6 +10,11 @@ namespace DittoHopper.Grasshopper;
 /// </summary>
 public sealed class LayerGlob
 {
+    /// <summary>The one help text for every Layers input.</summary>
+    public const string Help =
+        "Layer paths such as Structure::* (Structure and everything under it) or *Wall*; * matches any text, ? one character, " +
+        "case is ignored. Several: any of them. Empty: every layer.";
+
     private readonly Regex[] patterns;
 
     public LayerGlob(IEnumerable<string?> patterns)

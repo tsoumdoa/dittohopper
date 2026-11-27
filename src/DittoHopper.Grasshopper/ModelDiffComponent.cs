@@ -28,15 +28,17 @@ public sealed class ModelDiffComponent : DittoComponent
     {
         p.AddGenericParameter("A", "A", "The model before: a Snapshot.", GH_ParamAccess.item);
         p.AddGenericParameter("B", "B", "The model after: a Snapshot.", GH_ParamAccess.item);
-        p.AddGenericParameter("Cfg", "Cfg", "Optional Diff Settings. Empty: the defaults.", GH_ParamAccess.item);
+        p.AddGenericParameter("Settings", "Settings", "Optional Diff Settings. Empty: the defaults.", GH_ParamAccess.item);
         p[2].Optional = true;
     }
 
     protected override void RegisterOutputParams(GH_OutputParamManager p)
     {
-        p.AddGeometryParameter("Added", "Added", "Objects only in B. A block instance is its insertion point.", GH_ParamAccess.list);
-        p.AddGeometryParameter("Removed", "Removed", "Objects only in A, as they were in A.", GH_ParamAccess.list);
-        p.AddGeometryParameter("Modified", "Modified", "Matched objects that changed, as they are in B. Use Diff Filter to see how.", GH_ParamAccess.list);
+        p.AddGeometryParameter("Added", "Added",
+            "Objects only in B, converted to A's units. A block instance is its insertion point.", GH_ParamAccess.list);
+        p.AddGeometryParameter("Removed", "Removed", "Objects only in A, as they were in A. A block instance is its insertion point.", GH_ParamAccess.list);
+        p.AddGeometryParameter("Modified", "Modified",
+            "Matched objects that changed, as they are in B, converted to A's units. Use Diff Filter to see how.", GH_ParamAccess.list);
         p.AddTextParameter("Events", "Events", "Table events: layers, blocks, materials, linetypes and groups added, deleted, renamed or changed.", GH_ParamAccess.list);
         p.AddGenericParameter("Result", "Result", "The whole diff. Connect to Diff Filter, Diff Preview or Assert Unchanged; a Panel shows its summary.", GH_ParamAccess.item);
     }
@@ -58,7 +60,7 @@ public sealed class ModelDiffComponent : DittoComponent
         {
             if (Unwrap<DiffSettings>(cfg) is not { } given)
             {
-                AddRuntimeMessage(GH_RuntimeMessageLevel.Error, $"Cfg needs Diff Settings, not {cfg.TypeName}.");
+                AddRuntimeMessage(GH_RuntimeMessageLevel.Error, $"Settings needs Diff Settings, not {cfg.TypeName}.");
                 return;
             }
             settings = given;
@@ -85,16 +87,14 @@ public sealed class ModelDiffComponent : DittoComponent
 
         foreach (string note in run.Result.Header.Notes)
             AddRuntimeMessage(GH_RuntimeMessageLevel.Remark, note);
-        da.SetDataList(0, run.Added.Select(id => Geometry.ToGoo(b.GeometryOf(id))));
+        double scale = run.BToA;
+        da.SetDataList(0, run.Added.Select(id => Geometry.ToGoo(b.GeometryOf(id), scale)));
         da.SetDataList(1, run.Removed.Select(id => Geometry.ToGoo(a.GeometryOf(id))));
-        da.SetDataList(2, run.Modified.Select(p => p.B is Guid id ? Geometry.ToGoo(b.GeometryOf(id)) : null));
+        da.SetDataList(2, run.Modified.Select(p => p.B is Guid id ? Geometry.ToGoo(b.GeometryOf(id), scale) : null));
         da.SetDataList(3, run.Result.TableEvents.Select(Describe.Event));
         da.SetData(4, new ResultGoo(run));
 
-        int changed = run.Added.Count + run.Removed.Count + run.Modified.Count;
-        Message = changed == 0 && run.Result.TableEvents.Count == 0
-            ? "Identical"
-            : $"+{run.Added.Count}  −{run.Removed.Count}  ~{run.Modified.Count}";
+        Message = $"+{run.Added.Count} −{run.Removed.Count} ~{run.Modified.Count} · {Describe.Plural(run.Result.TableEvents.Count, "event")}";
     }
 
     public override void RemovedFromDocument(GH_Document document)

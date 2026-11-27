@@ -1,5 +1,6 @@
 using System.Drawing;
 using DittoHopper.Core;
+using Core = DittoHopper.Core;
 using DittoHopper.Rhino;
 using Grasshopper.Kernel;
 using Grasshopper.Kernel.Types;
@@ -74,7 +75,7 @@ public sealed class SettingsGoo : GH_Goo<DiffSettings>
     public override string TypeName => "Diff Settings";
     public override string TypeDescription => "What a diff compares and how";
     public override IGH_Goo Duplicate() => new SettingsGoo(Value);
-    public override string ToString() => Value is null ? "No settings" : Settings.Describe(Value);
+    public override string ToString() => Value is null ? "No settings" : Vocabulary.Describe(Value);
 }
 
 public sealed class ResultGoo : GH_Goo<DiffRun>
@@ -89,20 +90,36 @@ public sealed class ResultGoo : GH_Goo<DiffRun>
     public override string ToString() => Value?.ToString() ?? "No result";
 }
 
-/// <summary>Turns snapshot geometry into Grasshopper geometry.</summary>
+/// <summary>Turns snapshot geometry into Grasshopper geometry, and converts between units.</summary>
 internal static class Geometry
 {
+    /// <summary>Multiplies lengths in <paramref name="from"/> into <paramref name="to"/>; 1 when either can't be converted.</summary>
+    public static double Scale(Core.UnitSystem from, Core.UnitSystem to) =>
+        Units.MetersPer(from) is double f && Units.MetersPer(to) is double t ? f / t : 1;
+
+    /// <summary>Multiplies lengths in <paramref name="from"/> into the units of a Rhino document.</summary>
+    public static double Scale(Core.UnitSystem from, global::Rhino.RhinoDoc? doc) =>
+        doc is not null && Units.MetersPer(from) is double f && f > 0
+            ? f / global::Rhino.RhinoMath.UnitScale(doc.ModelUnitSystem, global::Rhino.UnitSystem.Meters)
+            : 1;
+
     /// <summary>
-    /// Plain GH geometry, a copy the caller owns. A block instance becomes its insertion point: a snapshot keeps
-    /// the instance, not its definition's geometry. Null for types Grasshopper has no geometry for.
+    /// Plain GH geometry, a copy the caller owns, scaled by <paramref name="scale"/> about the origin (a unit
+    /// conversion). A block instance becomes its insertion point. Null for types Grasshopper has no geometry for.
     /// </summary>
-    public static IGH_GeometricGoo? ToGoo(GeometryBase? g) => g switch
+    public static IGH_GeometricGoo? ToGoo(GeometryBase? g, double scale = 1)
     {
-        null => null,
-        InstanceReferenceGeometry i => new GH_Point(InsertionPoint(i)),
-        Extrusion e => e.ToBrep(true) is { } brep ? new GH_Brep(brep) : null,
-        _ => GH_Convert.ToGeometricGoo(g.Duplicate()),
-    };
+        GeometryBase? copy = g switch
+        {
+            null => null,
+            InstanceReferenceGeometry i => new global::Rhino.Geometry.Point(InsertionPoint(i)),
+            Extrusion e => e.ToBrep(true),
+            _ => g.Duplicate(),
+        };
+        if (copy is null) return null;
+        if (scale != 1) copy.Transform(Transform.Scale(Point3d.Origin, scale));
+        return GH_Convert.ToGeometricGoo(copy);
+    }
 
     public static Point3d InsertionPoint(InstanceReferenceGeometry i)
     {

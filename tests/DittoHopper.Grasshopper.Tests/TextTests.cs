@@ -35,15 +35,18 @@ public sealed class TextTests
     [Fact]
     public void IgnoreTurnsPropertiesOffAndReportsUnknownNames()
     {
-        var toggles = Settings.Ignore(new PropertyToggles(), ["Color", "user-text", "Moved", "colour", "bogus"], out var unknown);
+        var toggles = Vocabulary.Ignore(new PropertyToggles(), ["Color", "user-text", "Moved", "colour", "bogus"], out var unknown);
         Assert.False(toggles.Color);
         Assert.False(toggles.UserText);
         Assert.False(toggles.Placement);
         Assert.True(toggles.Shape);
         Assert.Equal(["bogus"], unknown);
-        Assert.Equal("Key mark · Tol 0.5 · Ignoring placement, display order, color, print width, user text",
-            Settings.Describe(new DiffSettings { StableKey = "mark", ShapeTolerance = 0.5, Toggles = toggles }));
-        Assert.Equal("Key diff:uid · Tol auto · Ignoring display order, print width", Settings.Describe(new DiffSettings()));
+        Assert.Equal("placement", Vocabulary.Canonical("Moved"));
+        Assert.Equal("user text", Vocabulary.Canonical("UserText"));
+        Assert.Null(Vocabulary.Canonical("bogus"));
+        Assert.Equal("Key mark · Tolerance 0.5 · Ignoring placement, display order, color, print width, user text",
+            Vocabulary.Describe(new DiffSettings { StableKey = "mark", ShapeTolerance = 0.5, Toggles = toggles }));
+        Assert.Equal("Key diff:uid · Tolerance auto · Ignoring display order, print width", Vocabulary.Describe(new DiffSettings()));
     }
 
     [Fact]

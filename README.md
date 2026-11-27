@@ -27,18 +27,22 @@ components are on Grasshopper's **DittoHopper** tab.
 
 | Component | Inputs | Outputs | What it does |
 | --- | --- | --- | --- |
-| Snapshot | Source, Layers, Saved | Snap | Captures a `.3dm` file (cached until the file changes), or the open document when Source is empty. Saved = True takes the document as last saved |
-| Diff Settings | Key, Tol, Ignore | Cfg | Optional: the stable-key name, shape tolerance (empty = auto) and properties to ignore |
-| Model Diff | A, B, Cfg | Added, Removed, Modified, Events, Result | Diffs A (before) against B (after). A Panel on Result shows the summary |
-| Diff Filter | Result, Kind, Layer | Objects, Info | Changed objects by kind (`moved`, `layer`, `color`, `added`…) and layer; Info says what changed and how each was matched |
-| Diff Preview | Result, Ghost A | | Draws the diff: added green, removed red, modified amber, layer or block changes blue, unchanged grey |
-| Assert Unchanged | Result, Layers | Pass, Why | A QA gate: fails, with reasons, if anything on those layers changed |
-| Stamp IDs | Objects, Key, Run | Objects | Writes a `diff:uid` into objects that lack one, only while Run is True. The only component that changes the model |
+| Snapshot | Source, Layers, Saved | Snapshot | Captures a `.3dm` file (cached until the file changes), or the open document when Source is empty: live, or as last saved with Saved = True |
+| Diff Settings | Key, Tolerance, Ignore | Settings | Optional: the user-text key that identifies objects, the shape tolerance (empty = auto) and properties to ignore |
+| Model Diff | A, B, Settings | Added, Removed, Modified, Events, Result | Diffs A (before) against B (after), in A's units. A Panel on Result shows the summary and one line per change set |
+| Diff Filter | Result, Kind, Layers | Objects, Info | Changed objects by kind (`placement`/`moved`, `layer`, `color`, `added`…) and layer; Info says what changed, what didn't and how each was matched |
+| Diff Preview | Result, Ghost A | | Draws the diff: added green, removed red, modified amber, unchanged grey, blue where only a layer, block, material or linetype the object uses changed |
+| Assert Unchanged | Result, Layers | Pass, Why | A QA gate: fails, with reasons, if anything on those layers changed, or if the pattern matches no layer |
+| Stamp IDs | Objects, Key, Run | Objects | Writes a `diff:uid` into objects that lack one, once per press of a Button on Run. The only component that changes the model |
 
 Layer patterns such as `Structure::*` cover the whole `Structure` tree; `*` matches any text.
 
 **Try it:** two Snapshots (one with Source set to the last revision's `.3dm`, one with Source
 empty for the open document) into Model Diff A and B, a Panel on Result, and Diff Preview.
+
+**Limitations (v0):** files are read on Rhino's main thread, so a large model pauses Grasshopper
+while it is read (once per file version). Geometry outputs give a block instance as its
+insertion point; Diff Preview draws the whole block.
 
 ## Build
 

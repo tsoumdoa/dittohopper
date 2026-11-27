@@ -57,6 +57,43 @@ public sealed class ComponentTests(RhinoHost host, ITestOutputHelper output)
         Assert.Equal(GH_LoadingInstruction.Proceed, new DittoHopperPriority().PriorityLoad());
     });
 
+    /// <summary>Snapshot A and B → Model Diff → Diff Filter, Diff Preview and two Assert Unchanged, solved.</summary>
+    private sealed record Definition(GH_Document Doc, SnapshotComponent A, SnapshotComponent B, ModelDiffComponent Diff,
+        DiffFilterComponent Filter, DiffPreviewComponent Preview, AssertUnchangedComponent Gate, AssertUnchangedComponent Whole)
+    {
+        public ResultGoo Result => (ResultGoo)Assert.Single(Gh.Out(Diff, 4));
+        public bool Pass(AssertUnchangedComponent gate) => ((GH_Boolean)Assert.Single(Gh.Out(gate, 0))).Value;
+        public Dictionary<DiffPreviewComponent.Status, int> Statuses =>
+            Preview.Items.GroupBy(i => i.Status).ToDictionary(g => g.Key, g => g.Count());
+    }
+
+    private static Definition Solve(FixturePair pair, string? kind = null, string? gate = null)
+    {
+        var doc = new GH_Document { Enabled = true };
+        var d = new Definition(doc, Gh.Add<SnapshotComponent>(doc), Gh.Add<SnapshotComponent>(doc), Gh.Add<ModelDiffComponent>(doc),
+            Gh.Add<DiffFilterComponent>(doc), Gh.Add<DiffPreviewComponent>(doc), Gh.Add<AssertUnchangedComponent>(doc), Gh.Add<AssertUnchangedComponent>(doc));
+        Gh.Set(d.A.Params.Input[0], new GH_String(pair.A));
+        Gh.Set(d.B.Params.Input[0], new GH_String(pair.B));
+        Gh.Wire(d.A.Params.Output[0], d.Diff.Params.Input[0]);
+        Gh.Wire(d.B.Params.Output[0], d.Diff.Params.Input[1]);
+        foreach (var c in new GH_Component[] { d.Filter, d.Preview, d.Gate, d.Whole })
+            Gh.Wire(d.Diff.Params.Output[4], c.Params.Input[0]);
+        if (kind is not null) Gh.Set(d.Filter.Params.Input[1], new GH_String(kind));
+        if (gate is not null) Gh.Set(d.Gate.Params.Input[1], new GH_String(gate));
+        Gh.Solve(doc);
+        return d;
+    }
+
+    private static void SetGate(Definition d, string pattern)
+    {
+        Gh.Set(d.Gate.Params.Input[1], new GH_String(pattern));
+        Gh.Solve(d.Doc);
+    }
+
+    /// <summary>Millimetres in the preview's units: the active document's, or A's (millimetres) without one.</summary>
+    private static double MillimetresToDoc() =>
+        RhinoDoc.ActiveDoc is { } doc ? RhinoMath.UnitScale(UnitSystem.Millimeters, doc.ModelUnitSystem) : 1;
+
     [RhinoFact]
     public void SnapshotDiffFilterAndAssertSolveOnAFixturePair() => host.Run(() =>
     {
@@ -66,58 +103,179 @@ public sealed class ComponentTests(RhinoHost host, ITestOutputHelper output)
             Model.Transform(b, "wall", Transform.Translation(500, 0, 0));
             Model.Add(b, new LineCurve(new Point3d(0, 1000, 0), new Point3d(4000, 1000, 0)), LayerIndex(b, "Walls"), "new-line");
         });
+        var d = Solve(pair, kind: "moved", gate: "Structure::*");
+        using var doc = d.Doc;
 
-        using var doc = new GH_Document { Enabled = true };
-        var a = Gh.Add<SnapshotComponent>(doc);
-        var b = Gh.Add<SnapshotComponent>(doc);
-        var diff = Gh.Add<ModelDiffComponent>(doc);
-        var filter = Gh.Add<DiffFilterComponent>(doc);
-        var structure = Gh.Add<AssertUnchangedComponent>(doc);
-        var everything = Gh.Add<AssertUnchangedComponent>(doc);
-        var preview = Gh.Add<DiffPreviewComponent>(doc);
-        Gh.Set(a.Params.Input[0], new GH_String(pair.A));
-        Gh.Set(b.Params.Input[0], new GH_String(pair.B));
-        Gh.Wire(a.Params.Output[0], diff.Params.Input[0]);
-        Gh.Wire(b.Params.Output[0], diff.Params.Input[1]);
-        foreach (var c in new GH_Component[] { filter, structure, everything, preview })
-            Gh.Wire(diff.Params.Output[4], c.Params.Input[0]);
-        Gh.Set(filter.Params.Input[1], new GH_String("moved"));
-        Gh.Set(structure.Params.Input[1], new GH_String("Structure::*"));
-        Gh.Solve(doc);
-
-        foreach (var c in new GH_Component[] { a, b, diff, filter, structure, everything, preview })
+        foreach (var c in new GH_Component[] { d.A, d.B, d.Diff, d.Filter, d.Gate, d.Whole, d.Preview })
             Assert.True(c.RuntimeMessageLevel < GH_RuntimeMessageLevel.Warning, $"{c.Name}: {Gh.Errors(c)}");
+        Assert.Equal("A.3dm", d.A.Message);
 
-        var result = (ResultGoo)Assert.Single(Gh.Out(diff, 4));
-        output.WriteLine(result.ToString());
-        Assert.StartsWith("2 of 3 objects identical · 2 change sets · 0 table events", result.ToString());
-        Assert.Contains("Matched 3 by key", result.ToString()); // names unique in both models: pass 1
-        Assert.Single(Gh.Out(diff, 0)); // added line
-        Assert.Empty(Gh.Out(diff, 1));
-        Assert.IsType<GH_Brep>(Assert.Single(Gh.Out(diff, 2))); // moved wall
-        Assert.Empty(Gh.Out(diff, 3));
-        Assert.Equal("+1  −0  ~1", diff.Message);
+        string report = d.Result.ToString();
+        output.WriteLine(report);
+        Assert.StartsWith("2 of 3 objects identical · 2 change sets · 0 table events", report);
+        Assert.Contains("shape tolerance 0.01 (auto)", report);
+        Assert.Contains("Matched 3 by key", report); // names unique in both models: pass 1
+        Assert.Contains("• 1 object on Walls: moved 500 mm in X", report);
+        Assert.Contains("• 1 object added on Walls", report);
+        Assert.Single(Gh.Out(d.Diff, 0)); // added line
+        Assert.Empty(Gh.Out(d.Diff, 1));
+        Assert.IsType<GH_Brep>(Assert.Single(Gh.Out(d.Diff, 2))); // moved wall
+        Assert.Empty(Gh.Out(d.Diff, 3));
+        Assert.Equal("+1 −0 ~1 · 0 events", d.Diff.Message);
 
-        Assert.IsType<GH_Brep>(Assert.Single(Gh.Out(filter, 0)));
-        Assert.Equal(["W-01 · moved 500 mm in X · Walls · matched by key"], Gh.Texts(filter, 1));
+        Assert.IsType<GH_Brep>(Assert.Single(Gh.Out(d.Filter, 0)));
+        var info = Assert.Single(Gh.Texts(d.Filter, 1));
+        output.WriteLine(info);
+        Assert.Matches(@"^W-01 · moved 500 mm in X · Walls · \d+ properties unchanged · matched by key$", info);
 
-        Assert.True(((GH_Boolean)Assert.Single(Gh.Out(structure, 0))).Value);
-        Assert.Equal(["Nothing on Structure::* changed: 2 objects checked."], Gh.Texts(structure, 1));
-        Assert.False(((GH_Boolean)Assert.Single(Gh.Out(everything, 0))).Value);
-        Assert.Equal(["1 object on Walls: moved 500 mm in X", "1 object added on Walls"], Gh.Texts(everything, 1));
+        Assert.True(d.Pass(d.Gate));
+        Assert.Equal(["Nothing on Structure::* changed: 2 objects checked."], Gh.Texts(d.Gate, 1));
+        Assert.False(d.Pass(d.Whole));
+        Assert.Equal(["1 object on Walls: moved 500 mm in X", "1 object added on Walls"], Gh.Texts(d.Whole, 1));
 
-        var statuses = preview.Items.GroupBy(i => i.Status).ToDictionary(g => g.Key, g => g.Count());
+        var statuses = d.Statuses;
         Assert.Equal(2, statuses[DiffPreviewComponent.Status.Unchanged]);
         Assert.Equal(1, statuses[DiffPreviewComponent.Status.Added]);
         Assert.Equal(1, statuses[DiffPreviewComponent.Status.Modified]);
         Assert.Equal(1, statuses[DiffPreviewComponent.Status.Previous]);
-        Assert.True(preview.ClippingBox.IsValid);
+        Assert.True(d.Preview.ClippingBox.IsValid);
+
+        // A pattern that matches no layer fails the gate instead of passing it.
+        SetGate(d, "Strcture::*");
+        Assert.False(d.Pass(d.Gate));
+        Assert.StartsWith("No layer in A or B matches Strcture::*", Assert.Single(Gh.Texts(d.Gate, 1)));
 
         // Re-solving with the same file versions reuses the cached snapshots and the diff.
-        var before = ((ResultGoo)Gh.Out(diff, 4)[0]).Value;
-        a.ExpireSolution(false);
-        Gh.Solve(doc);
-        Assert.Same(before, ((ResultGoo)Gh.Out(diff, 4)[0]).Value);
+        var before = d.Result.Value;
+        d.A.ExpireSolution(false);
+        Gh.Solve(d.Doc);
+        Assert.Same(before, d.Result.Value);
+    });
+
+    [RhinoFact]
+    public void RenamingAParentLayerFailsAGateOnItsSublayersAndCountsOnlyInScopeObjects() => host.Run(() =>
+    {
+        Gh.Load();
+        var pair = FixturePair.Create("gh-rename-parent", BuildModel, b =>
+        {
+            foreach (var l in b.AllLayers) if (l.Name == "Structure") l.Name = "Frame";
+            // One move across two layers: one change set, one object of it on Walls.
+            Model.Transform(b, "wall", Transform.Translation(0, 0, 100));
+            Model.Transform(b, "column", Transform.Translation(0, 0, 100));
+        });
+        var d = Solve(pair, gate: "Structure::Columns");
+        using var doc = d.Doc;
+        output.WriteLine(d.Result.ToString());
+
+        Assert.False(d.Pass(d.Gate));
+        Assert.Contains(Gh.Texts(d.Gate, 1), w => w.StartsWith("Layer renamed: Structure → Frame", StringComparison.Ordinal));
+        SetGate(d, "Frame::*");
+        Assert.False(d.Pass(d.Gate));
+        SetGate(d, "Walls");
+        Assert.Equal(["1 object on Walls: moved 100 mm in Z"], Gh.Texts(d.Gate, 1));
+        Assert.Equal(2, d.Statuses[DiffPreviewComponent.Status.Modified]);
+        Assert.Equal(1, d.Statuses[DiffPreviewComponent.Status.Event]); // the slab on the renamed layer
+    });
+
+    [RhinoFact]
+    public void MixedUnitsComeOutInAsUnits() => host.Run(() =>
+    {
+        Gh.Load();
+        var pair = FixturePair.Create("gh-units", BuildModel, b =>
+        {
+            b.Settings.ModelUnitSystem = UnitSystem.Meters;
+            b.Settings.ModelAbsoluteTolerance = 1e-5;
+            foreach (var name in new[] { "slab", "column", "wall" })
+                Model.Transform(b, name, Transform.Scale(Point3d.Origin, 0.001));
+            Model.Transform(b, "wall", Transform.Translation(0.5, 0, 0));
+        });
+        // The preview's document is in metres, A in millimetres, B in metres.
+        using var rhino = RhinoDoc.CreateHeadless(null);
+        rhino.ModelUnitSystem = UnitSystem.Meters;
+        var active = RhinoDoc.ActiveDoc;
+        RhinoDoc.ActiveDoc = rhino;
+        try { MixedUnits(pair); }
+        finally { RhinoDoc.ActiveDoc = active; }
+    });
+
+    private void MixedUnits(FixturePair pair)
+    {
+        var d = Solve(pair, kind: "placement");
+        using var doc = d.Doc;
+        output.WriteLine(d.Result.ToString());
+        Assert.Equal(0.001, MillimetresToDoc(), 9);
+
+        Assert.Equal("+0 −0 ~1 · 0 events", d.Diff.Message);
+        var wall = ((GH_Brep)Assert.Single(Gh.Out(d.Diff, 2))).Value.GetBoundingBox(true);
+        Assert.Equal(500, wall.Min.X, 3); // B's metres, in A's millimetres
+        Assert.Equal(4500, wall.Max.X, 3);
+        var filtered = ((GH_Brep)Assert.Single(Gh.Out(d.Filter, 0))).Value.GetBoundingBox(true);
+        Assert.Equal(500, filtered.Min.X, 3);
+
+        // The preview draws A and B in the document's units, on top of each other.
+        double toDoc = MillimetresToDoc();
+        var slab = Assert.Single(d.Preview.Items, i => i.Status == DiffPreviewComponent.Status.Unchanged
+            && i.Geometry.GetBoundingBox(i.Xform).Max.Y > 7000 * toDoc);
+        Assert.Equal(8000 * toDoc, slab.Geometry.GetBoundingBox(slab.Xform).Max.X, 3);
+        var moved = Assert.Single(d.Preview.Items, i => i.Status == DiffPreviewComponent.Status.Modified);
+        Assert.Equal(500 * toDoc, moved.Geometry.GetBoundingBox(moved.Xform).Min.X, 3);
+        var previous = Assert.Single(d.Preview.Items, i => i.Status == DiffPreviewComponent.Status.Previous);
+        Assert.Equal(4000 * toDoc, previous.Geometry.GetBoundingBox(previous.Xform).Max.X, 6);
+    }
+
+    [RhinoFact]
+    public void BlocksDrawAsTheirDefinitionAndADataOnlyMemberEditIsNoChange() => host.Run(() =>
+    {
+        Gh.Load();
+        // A line member in A, the same line as a NURBS curve in B: representation only, so no block event.
+        var pair = FixturePair.CreateFromScratch("gh-block", f => Chair(f, nurbs: false), f => Chair(f, nurbs: true));
+        var d = Solve(pair);
+        using var doc = d.Doc;
+        output.WriteLine(d.Result.ToString());
+
+        Assert.Empty(Gh.Out(d.Diff, 3));
+        Assert.Equal("+0 −0 ~0 · 0 events", d.Diff.Message);
+        Assert.True(d.Pass(d.Whole));
+        var member = Assert.Single(d.Preview.Items);
+        Assert.IsAssignableFrom<Curve>(member.Geometry);
+        double toDoc = MillimetresToDoc();
+        var box = member.Geometry.GetBoundingBox(member.Xform);
+        Assert.Equal(1000 * toDoc, box.Min.X, 3); // placed by the instance transform
+        Assert.Equal(1500 * toDoc, box.Max.X, 3);
+
+        static void Chair(File3dm f, bool nurbs)
+        {
+            Model.Setup(f);
+            int l = Model.Layer(f, "Furniture");
+            Curve seat = new LineCurve(Point3d.Origin, new Point3d(500, 0, 0));
+            if (nurbs) seat = seat.ToNurbsCurve();
+            int block = Model.Block(f, "Chair", [seat], [new ObjectAttributes { LayerIndex = l }]);
+            var at = Model.Attr(l, "chair");
+            at.SetUserString("diff:uid", "chair-1");
+            f.Objects.AddInstanceObject(block, Transform.Translation(1000, 0, 0), at);
+        }
+    });
+
+    [RhinoFact]
+    public void ALayerColourChangeIsBlueOnlyOnObjectsThatInheritIt() => host.Run(() =>
+    {
+        Gh.Load();
+        var pair = FixturePair.Create("gh-layer-colour", f =>
+        {
+            Model.Setup(f);
+            int doors = Model.Layer(f, "Doors", Color.Gray);
+            Model.Add(f, new LineCurve(Point3d.Origin, new Point3d(1000, 0, 0)), doors, "bylayer");
+            var own = Model.Attr(doors, "own");
+            own.ColorSource = ObjectColorSource.ColorFromObject;
+            own.ObjectColor = Color.Red;
+            Model.Add(f, new LineCurve(new Point3d(0, 500, 0), new Point3d(1000, 500, 0)), own);
+        }, b => { foreach (var l in b.AllLayers) if (l.Name == "Doors") l.Color = Color.Blue; });
+        var d = Solve(pair);
+        using var doc = d.Doc;
+
+        Assert.Equal("+0 −0 ~0 · 1 event", d.Diff.Message);
+        Assert.Equal(1, d.Statuses[DiffPreviewComponent.Status.Event]);
+        Assert.Equal(1, d.Statuses[DiffPreviewComponent.Status.Unchanged]);
     });
 
     [RhinoFact]
@@ -133,19 +291,26 @@ public sealed class ComponentTests(RhinoHost host, ITestOutputHelper output)
             stamped.SetUserString("diff:uid", "already");
             var first = rhino.Objects.AddPoint(new Point3d(0, 0, 0));
             var second = rhino.Objects.AddPoint(new Point3d(1, 0, 0), stamped);
+            var third = rhino.Objects.AddPoint(new Point3d(2, 0, 0));
+            rhino.Objects.AddPoint(new Point3d(3, 0, 0), stamped); // not an input: duplicates count document-wide
 
             using var doc = new GH_Document { Enabled = true };
             var snap = Gh.Add<SnapshotComponent>(doc);
             var stamp = Gh.Add<StampIdsComponent>(doc);
             Gh.Set<IGH_Goo>(stamp.Params.Input[0], new GH_Guid(first), new GH_Guid(second));
+            Gh.Set(stamp.Params.Input[2], new GH_Boolean(true)); // saved as True: opening must not write
             Gh.Solve(doc);
 
             var snapshot = (SnapshotGoo)Assert.Single(Gh.Out(snap, 0));
-            Assert.Equal(2, snapshot.Value.Model.Objects.Count);
+            Assert.Equal(4, snapshot.Value.Model.Objects.Count);
             Assert.Equal("Live", snap.Message);
             Assert.Null(rhino.Objects.FindId(first).Attributes.GetUserString("diff:uid"));
             Assert.Equal("Not run", stamp.Message);
+            Assert.Contains("2 objects in this document share a diff:uid", Gh.Errors(stamp));
 
+            // Release, then press: one write.
+            Gh.Set(stamp.Params.Input[2], new GH_Boolean(false));
+            Gh.Solve(doc);
             Gh.Set(stamp.Params.Input[2], new GH_Boolean(true));
             Gh.Solve(doc);
             Assert.True(Guid.TryParse(rhino.Objects.FindId(first).Attributes.GetUserString("diff:uid"), out _));
@@ -153,11 +318,18 @@ public sealed class ComponentTests(RhinoHost host, ITestOutputHelper output)
             Assert.Equal("Stamped 1", stamp.Message);
             Assert.Equal(2, Gh.Out(stamp, 0).Count);
 
+            // Still True: connecting another object or recomputing writes nothing.
+            Gh.Set<IGH_Goo>(stamp.Params.Input[0], new GH_Guid(first), new GH_Guid(second), new GH_Guid(third));
+            Gh.Solve(doc);
+            Assert.Null(rhino.Objects.FindId(third).Attributes.GetUserString("diff:uid"));
+
             var saved = Gh.Add<SnapshotComponent>(doc);
             Gh.Set(saved.Params.Input[2], new GH_Boolean(true));
             Gh.Solve(doc);
             Assert.Contains("not been saved", Gh.Errors(saved));
+            Assert.Equal("Last saved", saved.Message);
             doc.RemoveObject(snap, false);
+            doc.RemoveObject(saved, false);
         }
         finally
         {

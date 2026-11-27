@@ -8,7 +8,7 @@ Rhino. In Grasshopper, the components are on the **DittoHopper** tab:
 
 - **Diff:** Snapshot, Diff Settings, Model Diff
 - **Review:** Diff Filter, Diff Preview, Assert Unchanged
-- **Write:** Stamp IDs, the only component that changes the Rhino model, and only while its Run input is True
+- **Write:** Stamp IDs, the only component that changes the Rhino model: once per press of a Button wired to Run
 
 Quick start: two Snapshot components (Source = a .3dm path each, or leave one
 empty for the open document) into Model Diff A and B. Put a Panel on Result for

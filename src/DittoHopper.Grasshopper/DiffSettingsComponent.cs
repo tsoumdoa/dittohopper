@@ -20,21 +20,24 @@ public sealed class DiffSettingsComponent : DittoComponent
     protected override void RegisterInputParams(GH_InputParamManager p)
     {
         p.AddTextParameter("Key", "Key",
-            "User-text key that holds each object's own id, e.g. mark. Objects with the same value are the same object, " +
-            "whatever happened to their GUID. diff:uid (written by Stamp IDs) always counts too.",
+            "The user-text key that identifies an object across versions. An object in A and an object in B with the same value " +
+            "under this key are matched as the same object first, whatever happened to their GUIDs. Default diff:uid, which " +
+            "Stamp IDs writes; set your own key (e.g. mark) to match by that instead. A re-bake, copy or export keeps the match " +
+            "only if it carries the user text forward. The key's value is identity, so it is never reported as a change.",
             GH_ParamAccess.item, DiffSettings.DefaultStableKey);
-        p.AddNumberParameter("Tol", "Tol",
-            "Shape tolerance in model A's units: smaller deviations are not real changes. Empty: auto, the models' absolute tolerance.",
+        p.AddNumberParameter("Tolerance", "Tolerance",
+            "Shape tolerance in model A's units: geometry that deviates less is not a real change. Empty: auto, the larger of the " +
+            "two models' absolute tolerances.",
             GH_ParamAccess.item);
         p[1].Optional = true;
         p.AddTextParameter("Ignore", "Ignore",
-            "Properties not to compare: " + string.Join(", ", Settings.Names) + ". Print width and display order are ignored by default.",
+            "Properties not to compare: " + string.Join(", ", Vocabulary.Names) + ". Print width and display order are ignored by default.",
             GH_ParamAccess.list);
         p[2].Optional = true;
     }
 
     protected override void RegisterOutputParams(GH_OutputParamManager p) =>
-        p.AddGenericParameter("Cfg", "Cfg", "Diff settings. Connect to Cfg of Model Diff.", GH_ParamAccess.item);
+        p.AddGenericParameter("Settings", "Settings", "Diff settings. Connect to Settings of Model Diff.", GH_ParamAccess.item);
 
     protected override void SolveInstance(IGH_DataAccess da)
     {
@@ -50,15 +53,15 @@ public sealed class DiffSettingsComponent : DittoComponent
         {
             if (!(tol > 0) || double.IsInfinity(tol))
             {
-                AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Tol must be a positive number, or empty for auto.");
+                AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Tolerance must be a positive number, or empty for auto.");
                 return;
             }
             shapeTolerance = tol;
         }
-        var toggles = Settings.Ignore(new PropertyToggles(), ignore, out var unknown);
+        var toggles = Vocabulary.Ignore(new PropertyToggles(), ignore, out var unknown);
         if (unknown.Count > 0)
             AddRuntimeMessage(GH_RuntimeMessageLevel.Warning,
-                $"Unknown property {string.Join(", ", unknown)}. Use: {string.Join(", ", Settings.Names)}.");
+                $"Unknown property {string.Join(", ", unknown)}. Use: {string.Join(", ", Vocabulary.Names)}.");
 
         var settings = new DiffSettings { StableKey = key.Trim(), ShapeTolerance = shapeTolerance, Toggles = toggles };
         // M3 adds the Scope input after Ignore, setting settings.ScopeGlob.
@@ -66,30 +69,30 @@ public sealed class DiffSettingsComponent : DittoComponent
     }
 }
 
-/// <summary>Property names for Ignore and a readable summary of settings.</summary>
-public static class Settings
+/// <summary>
+/// The one property vocabulary for Diff Settings' Ignore and Diff Filter's Kind: each name, its aliases (moved is
+/// placement), the toggle it switches and the change kinds it covers.
+/// </summary>
+public static class Vocabulary
 {
-    private static readonly (string Name, Func<PropertyToggles, bool> Get, Func<PropertyToggles, bool, PropertyToggles> Set)[] Properties =
-    [
-        ("placement", t => t.Placement, (t, v) => t with { Placement = v }),
-        ("shape", t => t.Shape, (t, v) => t with { Shape = v }),
-        ("layer", t => t.Layer, (t, v) => t with { Layer = v }),
-        ("block", t => t.BlockDefinition, (t, v) => t with { BlockDefinition = v }),
-        ("groups", t => t.GroupMembership, (t, v) => t with { GroupMembership = v }),
-        ("display order", t => t.DisplayOrder, (t, v) => t with { DisplayOrder = v }),
-        ("color", t => t.Color, (t, v) => t with { Color = v }),
-        ("material", t => t.Material, (t, v) => t with { Material = v }),
-        ("linetype", t => t.Linetype, (t, v) => t with { Linetype = v }),
-        ("print width", t => t.PrintWidth, (t, v) => t with { PrintWidth = v }),
-        ("name", t => t.Name, (t, v) => t with { Name = v }),
-        ("user text", t => t.UserText, (t, v) => t with { UserText = v }),
-    ];
+    private sealed record Property(string Name, string[] Aliases, PropertyKind[] Kinds,
+        Func<PropertyToggles, bool> Get, Func<PropertyToggles, bool, PropertyToggles> Set);
 
-    private static readonly Dictionary<string, string> Aliases = new()
-    {
-        ["moved"] = "placement", ["move"] = "placement", ["transform"] = "placement",
-        ["geometry"] = "shape", ["colour"] = "color", ["group"] = "groups", ["usertext"] = "user text",
-    };
+    private static readonly Property[] Properties =
+    [
+        new("placement", ["moved", "move", "transform"], [PropertyKind.Transform], t => t.Placement, (t, v) => t with { Placement = v }),
+        new("shape", ["geometry"], [PropertyKind.Geometry], t => t.Shape, (t, v) => t with { Shape = v }),
+        new("layer", [], [PropertyKind.Layer], t => t.Layer, (t, v) => t with { Layer = v }),
+        new("block", [], [PropertyKind.Block, PropertyKind.BlockContent], t => t.BlockDefinition, (t, v) => t with { BlockDefinition = v }),
+        new("groups", ["group"], [PropertyKind.Groups], t => t.GroupMembership, (t, v) => t with { GroupMembership = v }),
+        new("display order", [], [PropertyKind.DisplayOrder], t => t.DisplayOrder, (t, v) => t with { DisplayOrder = v }),
+        new("color", ["colour"], [PropertyKind.Color], t => t.Color, (t, v) => t with { Color = v }),
+        new("material", [], [PropertyKind.Material], t => t.Material, (t, v) => t with { Material = v }),
+        new("linetype", [], [PropertyKind.Linetype], t => t.Linetype, (t, v) => t with { Linetype = v }),
+        new("print width", [], [PropertyKind.PrintWidth], t => t.PrintWidth, (t, v) => t with { PrintWidth = v }),
+        new("name", [], [PropertyKind.Name], t => t.Name, (t, v) => t with { Name = v }),
+        new("user text", [], [PropertyKind.UserText], t => t.UserText, (t, v) => t with { UserText = v }),
+    ];
 
     public static IEnumerable<string> Names => Properties.Select(p => p.Name);
 
@@ -97,16 +100,25 @@ public static class Settings
     public static string Normalize(string s) =>
         new([.. s.Trim().ToLower(CultureInfo.InvariantCulture).Where(c => c is not (' ' or '-' or '_'))]);
 
+    private static Property? Find(string raw)
+    {
+        string n = Normalize(raw);
+        return Properties.FirstOrDefault(p => Normalize(p.Name) == n || p.Aliases.Any(a => Normalize(a) == n));
+    }
+
+    /// <summary>The canonical property name for a name or alias, or null.</summary>
+    public static string? Canonical(string raw) => Find(raw)?.Name;
+
+    /// <summary>The change kinds a canonical property name covers.</summary>
+    public static IReadOnlyList<PropertyKind> KindsOf(string name) => Find(name)?.Kinds ?? [];
+
     public static PropertyToggles Ignore(PropertyToggles toggles, IEnumerable<string> names, out List<string> unknown)
     {
         unknown = [];
         foreach (string raw in names.Where(n => !string.IsNullOrWhiteSpace(n)))
         {
-            string n = Normalize(raw);
-            n = Aliases.TryGetValue(n, out var alias) ? Normalize(alias) : n;
-            var property = Properties.FirstOrDefault(p => Normalize(p.Name) == n);
-            if (property.Name is null) unknown.Add(raw.Trim());
-            else toggles = property.Set(toggles, false);
+            if (Find(raw) is { } property) toggles = property.Set(toggles, false);
+            else unknown.Add(raw.Trim());
         }
         return toggles;
     }
@@ -115,6 +127,6 @@ public static class Settings
     {
         var ignored = Properties.Where(p => !p.Get(s.Toggles)).Select(p => p.Name).ToList();
         string tol = s.ShapeTolerance is double t ? t.ToString("0.######", CultureInfo.InvariantCulture) : "auto";
-        return $"Key {s.StableKey} · Tol {tol} · Ignoring {(ignored.Count == 0 ? "nothing" : string.Join(", ", ignored))}";
+        return $"Key {s.StableKey} · Tolerance {tol} · Ignoring {(ignored.Count == 0 ? "nothing" : string.Join(", ", ignored))}";
     }
 }

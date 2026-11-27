@@ -29,13 +29,22 @@ public static class Describe
     public static int ObjectsInA(DiffResult r) =>
         r.Matches.Count + r.ChangeSets.Where(s => s.Kind == ChangeKind.Removed).Sum(s => s.Objects.Count);
 
-    /// <summary>The summary, then where A and B came from, how objects were matched, and the header notes.</summary>
-    public static string Report(DiffResult r)
+    /// <summary>Most change sets listed in Report; the rest are counted.</summary>
+    public const int ReportedSets = 20;
+
+    /// <summary>
+    /// The summary; where A and B came from and the effective shape tolerance; how objects were matched; the header
+    /// notes; then one line per change set, flagged ones first. <paramref name="layersOf"/> gives a set's object
+    /// layers, when known.
+    /// </summary>
+    public static string Report(DiffResult r, Func<ChangeSet, IEnumerable<string>>? layersOf = null)
     {
+        double shapeTolerance = r.Settings.ShapeTolerance ?? r.Header.Tolerance;
         var lines = new List<string>
         {
             Summary(r),
-            $"A {Label(r.A.Source)} → B {Label(r.B.Source)} · {Unit(r.Header.Units)}, tolerance {Number(r.Header.Tolerance)}",
+            $"A {Label(r.A.Source)} → B {Label(r.B.Source)} · {Unit(r.Header.Units)}, shape tolerance {Number(shapeTolerance)}" +
+                (r.Settings.ShapeTolerance is null ? " (auto)" : ""),
         };
         if (r.Matches.Count > 0)
         {
@@ -46,6 +55,17 @@ public static class Describe
         if (dataOnly > 0)
             lines.Add($"{Plural(dataOnly, "object")} with the same shape but different data (rebuilt, flipped…): not counted as changes");
         lines.AddRange(r.Header.Notes);
+
+        var events = r.TableEvents.ToDictionary(e => e.Id);
+        var sets = r.ChangeSets.OrderByDescending(c => c.Flags.Count > 0).ToList(); // stable: keeps the result's order within each group
+        foreach (var set in sets.Take(ReportedSets))
+        {
+            IEnumerable<string> layers = set.Layer is { } l ? [l] : layersOf?.Invoke(set) ?? [];
+            string? cause = set.RootCauseEventId is { } id && events.TryGetValue(id, out var e) ? Cause(e) : null;
+            lines.Add("• " + Set(set, set.Objects.Count, layers) + (cause is null ? "" : $" · cause: {cause}"));
+        }
+        if (sets.Count > ReportedSets)
+            lines.Add($"• …and {Plural(sets.Count - ReportedSets, "more change set")}: use Diff Filter to list them.");
         return string.Join(Environment.NewLine, lines);
     }
 
@@ -120,16 +140,18 @@ public static class Describe
         _ => $"{Name(c.Property)} {Value(c.From, c.FromSource)} → {Value(c.To, c.ToSource)}",
     };
 
-    /// <summary>A change set in one line, for Assert Unchanged's Why.</summary>
-    public static string Set(ChangeSet s, IEnumerable<string> layers)
+    /// <summary>A change set in one line: count, change, layers and flags. <paramref name="count"/> may be the in-scope part.</summary>
+    public static string Set(ChangeSet s, int count, IEnumerable<string> layers)
     {
-        string where = string.Join(", ", layers.Distinct().Order(StringComparer.OrdinalIgnoreCase));
-        int n = s.Objects.Count;
+        var distinct = layers.Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToList();
+        string where = distinct.Count == 0 ? "" : distinct.Count <= 3
+            ? " on " + string.Join(", ", distinct)
+            : $" on {string.Join(", ", distinct.Take(3))} and {Plural(distinct.Count - 3, "more layer")}";
         string text = s.Kind switch
         {
-            ChangeKind.Added => $"{Plural(n, "object")} added on {s.Layer}",
-            ChangeKind.Removed => $"{Plural(n, "object")} removed from {s.Layer}",
-            _ => $"{Plural(n, "object")} on {where}: {(s.Change is { } c ? Change(c) : "changed")}",
+            ChangeKind.Added => $"{Plural(count, "object")} added on {s.Layer}",
+            ChangeKind.Removed => $"{Plural(count, "object")} removed from {s.Layer}",
+            _ => $"{Plural(count, "object")}{where}: {(s.Change is { } c ? Change(c) : "changed")}",
         };
         if (s.Flags.Count > 0) text += " · flagged: " + string.Join(", ", s.Flags);
         return text;
@@ -176,7 +198,7 @@ public static class Describe
 
     public static string Count(int n) => n.ToString("N0", Inv);
 
-    public static string Plural(int n, string noun) => $"{Count(n)} {noun}{(n == 1 ? "" : "s")}";
+    public static string Plural(int n, string noun, string? plural = null) => $"{Count(n)} {(n == 1 ? noun : plural ?? noun + "s")}";
 
     private static string Number(double v) => v.ToString("0.######", Inv);
 }

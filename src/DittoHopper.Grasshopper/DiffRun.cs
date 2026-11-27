@@ -51,7 +51,31 @@ public sealed class DiffRun
     /// <summary>Modified pairs, each once, in change-set order.</summary>
     public IReadOnlyList<ObjectPair> Modified => index.Value.Modified;
 
-    public override string ToString() => Describe.Report(Result);
+    /// <summary>Multiplies B's lengths into A's units (1 when they agree or can't be converted).</summary>
+    public double BToA => Geometry.Scale(B.Model.Info.Units, A.Model.Info.Units);
+
+    /// <summary>The layers a change set's objects sit on: B's, or A's for objects only in A.</summary>
+    public IEnumerable<string> LayersOf(ChangeSet set) =>
+        set.Objects.Select(p => p.B is Guid b ? LayerOfB(b) : p.A is Guid a ? LayerOfA(a) : null).OfType<string>();
+
+    public override string ToString() => Describe.Report(Result, LayersOf);
+
+    /// <summary>
+    /// True when the object takes its material or linetype from <paramref name="id"/>: its own value, or its layer's
+    /// when it uses the layer's.
+    /// </summary>
+    public static bool Uses(ModelSnapshot model, ObjectRecord o, Sourced<Guid> value, Func<LayerRecord, Guid> fromLayer, Guid id) =>
+        value.Source switch
+        {
+            ValueSource.ByObject => value.Value == id,
+            ValueSource.ByLayer => model.Layers.FirstOrDefault(l => l.Id == o.LayerId) is { } layer && fromLayer(layer) == id,
+            _ => false,
+        };
+
+    /// <summary>The path itself or a sublayer of it.</summary>
+    public static bool IsUnder(string? path, string? parent) =>
+        path is not null && parent is not null &&
+        (string.Equals(path, parent, StringComparison.OrdinalIgnoreCase) || path.StartsWith(parent + "::", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Full layer paths from a snapshot's layer table.</summary>
     public static Dictionary<Guid, string> LayerPaths(ModelSnapshot model)

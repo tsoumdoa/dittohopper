@@ -1,25 +1,35 @@
 using System.Drawing;
 using DittoHopper.Core;
+using DittoHopper.Rhino;
 using Grasshopper.Kernel;
+using Rhino;
 using Rhino.Display;
 using Rhino.Geometry;
 
 namespace DittoHopper.Grasshopper;
 
-/// <summary>Draws a diff in the viewport in the status colours.</summary>
+/// <summary>
+/// Draws a diff in the viewport in the status colours, both sides converted to the viewport document's units
+/// (A's units when there is no document).
+/// Ownership: items point at the snapshots' geometry and are drawn through a model transform (units, block
+/// placement); the only geometry this component creates is a Brep per extrusion. It never disposes anything:
+/// clearing the items lets the GC release it.
+/// </summary>
 public sealed class DiffPreviewComponent : DittoComponent
 {
     public enum Status { Unchanged, Event, Added, Modified, Removed, Previous }
 
-    public readonly record struct Item(GeometryBase Geometry, Status Status);
+    /// <summary>One thing to draw: geometry in its own space, placed by <see cref="Xform"/>.</summary>
+    public readonly record struct Item(GeometryBase Geometry, Status Status, Transform Xform);
 
     private readonly List<Item> items = [];
     private BoundingBox box = BoundingBox.Empty;
 
     public DiffPreviewComponent()
         : base("Diff Preview", "Preview",
-            "Shows a diff in the viewport: added green, removed red, modified amber, objects whose layer or block changed blue, " +
-            "unchanged grey. Ghost A also draws modified objects as they were in A.",
+            "Shows a diff in the viewport: added green, removed red, modified amber, unchanged grey, and blue for objects that " +
+            "look different only because a layer, block, material or linetype they use changed. Ghost A also draws modified " +
+            "objects as they were in A, faintly.",
             ReviewPanel)
     { }
 
@@ -30,7 +40,7 @@ public sealed class DiffPreviewComponent : DittoComponent
     protected override void RegisterInputParams(GH_InputParamManager p)
     {
         p.AddGenericParameter("Result", "Result", "Result of Model Diff.", GH_ParamAccess.item);
-        p.AddBooleanParameter("Ghost A", "Ghost", "Also draw modified objects as they were in A, faintly.", GH_ParamAccess.item, true);
+        p.AddBooleanParameter("Ghost A", "Ghost A", "Also draw modified objects as they were in A, faintly.", GH_ParamAccess.item, true);
     }
 
     protected override void RegisterOutputParams(GH_OutputParamManager p) { }
@@ -50,48 +60,117 @@ public sealed class DiffPreviewComponent : DittoComponent
         if (run is null) return;
         bool ghost = true;
         da.GetData(1, ref ghost);
-        foreach (var item in Build(run, ghost))
+        var doc = OnPingDocument()?.RhinoDocument ?? RhinoDoc.ActiveDoc;
+        foreach (var item in Build(run, ghost, doc))
         {
             items.Add(item);
-            box.Union(item.Geometry.GetBoundingBox(false));
+            box.Union(item.Geometry.GetBoundingBox(item.Xform));
         }
     }
 
-    /// <summary>Every B object with its status, plus removed A objects and, with ghost, modified A objects.</summary>
-    public static IEnumerable<Item> Build(DiffRun run, bool ghost)
+    /// <summary>Every B object with its status, removed A objects and, with ghost, modified A objects as they were.</summary>
+    public static IEnumerable<Item> Build(DiffRun run, bool ghost, RhinoDoc? doc)
     {
+        // In the document's units; without a document, in A's.
+        var toDocA = Transform.Scale(Point3d.Origin, doc is null ? 1 : Geometry.Scale(run.A.Model.Info.Units, doc));
+        var toDocB = Transform.Scale(Point3d.Origin, doc is null ? run.BToA : Geometry.Scale(run.B.Model.Info.Units, doc));
         var added = run.Added.ToHashSet();
         var modified = run.Modified.Where(p => p.B is not null).Select(p => p.B!.Value).ToHashSet();
-        var (eventLayers, eventBlocks) = (new HashSet<Guid>(), new HashSet<Guid>());
-        foreach (var e in run.Result.TableEvents)
-        {
-            if (e.Table == TableKind.Layer && e.Kind != TableEventKind.Added && e.B is Guid lb) eventLayers.Add(lb);
-            if (e.Table == TableKind.Layer) foreach (var s in e.Shares) eventLayers.Add(s.B);
-            if (e.Table == TableKind.Block && e.B is Guid bb) eventBlocks.Add(bb);
-        }
+        var events = EventObjects(run);
 
+        var list = new List<Item>();
         foreach (var o in run.B.Model.Objects)
         {
             var status = added.Contains(o.Id) ? Status.Added
                 : modified.Contains(o.Id) ? Status.Modified
-                : eventLayers.Contains(o.LayerId) || (o.BlockDefinitionId is Guid d && eventBlocks.Contains(d)) ? Status.Event
+                : events.Contains(o.Id) ? Status.Event
                 : Status.Unchanged;
-            if (Display(run.B.GeometryOf(o.Id)) is { } g) yield return new Item(g, status);
+            Add(list, run.B, run.B.GeometryOf(o.Id), status, toDocB, 0);
         }
         foreach (var id in run.Removed)
-            if (Display(run.A.GeometryOf(id)) is { } g) yield return new Item(g, Status.Removed);
+            Add(list, run.A, run.A.GeometryOf(id), Status.Removed, toDocA, 0);
         if (ghost)
             foreach (var pair in run.Modified)
-                if (pair.A is Guid a && Display(run.A.GeometryOf(a)) is { } g) yield return new Item(g, Status.Previous);
+                if (pair.A is Guid a) Add(list, run.A, run.A.GeometryOf(a), Status.Previous, toDocA, 0);
+        return list;
     }
 
-    /// <summary>Geometry the pipeline can draw: an instance becomes its insertion point, an extrusion a Brep.</summary>
-    private static GeometryBase? Display(GeometryBase? g) => g switch
+    /// <summary>A block instance draws as its definition's members, nested ones included, placed by its transform.</summary>
+    private static void Add(List<Item> list, RhinoSnapshot side, GeometryBase? g, Status status, Transform xform, int depth)
     {
-        InstanceReferenceGeometry i => new global::Rhino.Geometry.Point(Geometry.InsertionPoint(i)),
-        Extrusion e => e.ToBrep(true),
-        _ => g,
-    };
+        switch (g)
+        {
+            case null:
+                return;
+            case InstanceReferenceGeometry instance:
+                var placed = xform * instance.Xform;
+                var members = depth < 16 ? side.DefinitionGeometry(instance.ParentIdefId) : [];
+                if (members.Count == 0)
+                    list.Add(new Item(new global::Rhino.Geometry.Point(Point3d.Origin), status, placed)); // linked or empty: its insertion point
+                foreach (var member in members)
+                    Add(list, side, member, status, placed, depth + 1);
+                return;
+            case Extrusion e when e.ToBrep(true) is { } brep:
+                list.Add(new Item(brep, status, xform));
+                return;
+            default:
+                list.Add(new Item(g, status, xform));
+                return;
+        }
+    }
+
+    /// <summary>
+    /// B objects that look different only because a table entry they take their appearance from changed: a layer's
+    /// colour paints the objects whose colour is ByLayer, not those with their own; a rename or reparent paints
+    /// everything on the layer and its sublayers; a block, material or linetype edit paints its users.
+    /// </summary>
+    private static HashSet<Guid> EventObjects(DiffRun run)
+    {
+        var b = run.B.Model;
+        var paths = run.LayerPathsB;
+        var onLayer = b.Objects.ToLookup(o => o.LayerId);
+        var result = new HashSet<Guid>();
+        void Paint(IEnumerable<ObjectRecord> objects) { foreach (var o in objects) result.Add(o.Id); }
+
+        foreach (var e in run.Result.TableEvents)
+        {
+            if (e.Table == TableKind.Layer)
+            {
+                if (e.Kind == TableEventKind.Split)
+                    foreach (var share in e.Shares) Paint(onLayer[share.B]);
+                if (e.B is not Guid lb) continue;
+                switch (e.Kind)
+                {
+                    case TableEventKind.Renamed or TableEventKind.Reparented:
+                        string? path = paths.GetValueOrDefault(lb);
+                        foreach (var (id, p) in paths)
+                            if (DiffRun.IsUnder(p, path)) Paint(onLayer[id]);
+                        break;
+                    case TableEventKind.PropertyChanged:
+                        Paint(onLayer[lb].Where(o => e.Property switch
+                        {
+                            PropertyKind.Color => o.Color.Source == ValueSource.ByLayer,
+                            PropertyKind.Material => o.Material.Source == ValueSource.ByLayer,
+                            PropertyKind.Linetype => o.Linetype.Source == ValueSource.ByLayer,
+                            PropertyKind.PrintWidth => o.PrintWidth.Source == ValueSource.ByLayer,
+                            _ => true,
+                        }));
+                        break;
+                }
+            }
+            else if (e.B is Guid id && e.Kind is TableEventKind.Renamed or TableEventKind.PropertyChanged)
+            {
+                Paint(e.Table switch
+                {
+                    TableKind.Block => b.Objects.Where(o => o.BlockDefinitionId == id),
+                    TableKind.Material => b.Objects.Where(o => DiffRun.Uses(b, o, o.Material, l => l.MaterialId, id)),
+                    TableKind.Linetype => b.Objects.Where(o => DiffRun.Uses(b, o, o.Linetype, l => l.LinetypeId, id)),
+                    _ => [],
+                });
+            }
+        }
+        return result;
+    }
 
     public override bool IsPreviewCapable => true;
 
@@ -103,12 +182,15 @@ public sealed class DiffPreviewComponent : DittoComponent
         {
             if (item.Status is not (Status.Added or Status.Modified or Status.Removed)) continue;
             using var material = new DisplayMaterial(ColorOf(item.Status), item.Status == Status.Removed ? 0.75 : 0.45);
-            switch (item.Geometry)
+            Placed(args.Display, item.Xform, p =>
             {
-                case Brep b: args.Display.DrawBrepShaded(b, material); break;
-                case Mesh m: args.Display.DrawMeshShaded(m, material); break;
-                case SubD s: args.Display.DrawSubDShaded(s, material); break;
-            }
+                switch (item.Geometry)
+                {
+                    case Brep b: p.DrawBrepShaded(b, material); break;
+                    case Mesh m: p.DrawMeshShaded(m, material); break;
+                    case SubD s: p.DrawSubDShaded(s, material); break;
+                }
+            });
         }
     }
 
@@ -119,8 +201,20 @@ public sealed class DiffPreviewComponent : DittoComponent
         {
             var color = ColorOf(item.Status);
             int width = item.Status is Status.Unchanged or Status.Previous ? 1 : bold;
-            Wires(args.Display, item.Geometry, color, width);
+            Placed(args.Display, item.Xform, p => Wires(p, item.Geometry, color, width));
         }
+    }
+
+    private static void Placed(DisplayPipeline p, Transform xform, Action<DisplayPipeline> draw)
+    {
+        if (xform.IsIdentity)
+        {
+            draw(p);
+            return;
+        }
+        p.PushModelTransform(xform);
+        try { draw(p); }
+        finally { p.PopModelTransform(); }
     }
 
     public static Color ColorOf(Status s) => s switch

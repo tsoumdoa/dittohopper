@@ -6,14 +6,15 @@ namespace DittoHopper.Grasshopper;
 /// <summary>Picks changed objects out of a diff by kind of change and by layer, with a line of evidence for each.</summary>
 public sealed class DiffFilterComponent : DittoComponent
 {
-    /// <summary>Kinds of change Diff Filter understands, besides detector flags.</summary>
-    public static readonly string[] Kinds =
-        ["added", "removed", "modified", "moved", "shape", "layer", "name", "color", "material", "linetype",
-         "print width", "display order", "user text", "groups", "block", "flagged"];
+    /// <summary>Kinds besides the property names, which are the same as Diff Settings' Ignore.</summary>
+    private static readonly string[] ObjectKinds = ["added", "removed", "modified", "flagged"];
+
+    public static IEnumerable<string> Kinds => ObjectKinds.Concat(Vocabulary.Names);
 
     public DiffFilterComponent()
         : base("Diff Filter", "Filter",
-            "The changed objects of a diff, filtered by kind of change and layer. Info says what changed and how each object was matched.",
+            "The changed objects of a diff, filtered by kind of change and layer. Info says what changed, what didn't, and how " +
+            "each object was matched.",
             ReviewPanel)
     { }
 
@@ -25,37 +26,50 @@ public sealed class DiffFilterComponent : DittoComponent
     {
         p.AddGenericParameter("Result", "Result", "Result of Model Diff.", GH_ParamAccess.item);
         p.AddTextParameter("Kind", "Kind",
-            $"Kinds of change to keep: {string.Join(", ", Kinds)}, or a detector flag. Several: any of them. Empty: every change.",
+            $"Kinds of change to keep: {string.Join(", ", Kinds)} (moved is placement), or a detector flag. Several: any of them. " +
+            "Empty: every change. Table events, such as a block definition edited directly or a layer renamed, are not objects: " +
+            "they are listed in Model Diff's Events.",
             GH_ParamAccess.list);
         p[1].Optional = true;
-        p.AddTextParameter("Layer", "Layer",
-            "Only objects on these layers, before or after the change, e.g. Structure::* (the whole Structure tree). Empty: every layer.",
-            GH_ParamAccess.list);
+        p.AddTextParameter("Layers", "Layers",
+            "Only objects on these layers, before or after the change. " + LayerGlob.Help, GH_ParamAccess.list);
         p[2].Optional = true;
     }
 
     protected override void RegisterOutputParams(GH_OutputParamManager p)
     {
-        p.AddGeometryParameter("Objects", "Objects", "The matching objects: removed ones as they were in A, the rest as they are in B.", GH_ParamAccess.list);
-        p.AddTextParameter("Info", "Info", "One line per object: what changed, its layer, and how it was matched (GUID, key, hash…).", GH_ParamAccess.list);
+        p.AddGeometryParameter("Objects", "Objects",
+            "The matching objects in model A's units: removed ones as they were in A, the rest as they are in B. A block instance is its insertion point.",
+            GH_ParamAccess.list);
+        p.AddTextParameter("Info", "Info",
+            "One line per object: what changed, its layer, how many properties did not change, and how it was matched (GUID, key, hash…).",
+            GH_ParamAccess.list);
     }
 
     protected override void SolveInstance(IGH_DataAccess da)
     {
         var run = Input<DiffRun>(da, 0, "a Model Diff Result");
         if (run is null) return;
-        var kinds = Texts(da, 1).Where(k => !string.IsNullOrWhiteSpace(k)).Select(Settings.Normalize).Distinct().ToList();
         var layers = new LayerGlob(Texts(da, 2));
 
-        var flags = run.Result.ChangeSets.SelectMany(s => s.Flags).Select(Settings.Normalize).ToHashSet();
-        var known = Kinds.Select(Settings.Normalize).ToHashSet();
-        var unknown = kinds.Where(k => !known.Contains(k) && !flags.Contains(k)).ToList();
+        var flags = run.Result.ChangeSets.SelectMany(s => s.Flags).Select(Vocabulary.Normalize).ToHashSet();
+        var kinds = new List<string>();
+        var unknown = new List<string>();
+        foreach (var raw in Texts(da, 1).Where(k => !string.IsNullOrWhiteSpace(k)))
+        {
+            string k = Vocabulary.Canonical(raw) ?? Vocabulary.Normalize(raw);
+            if (Vocabulary.Canonical(raw) is null && !ObjectKinds.Contains(k) && !flags.Contains(k)) unknown.Add(raw.Trim());
+            else kinds.Add(k);
+        }
         if (unknown.Count > 0)
             AddRuntimeMessage(GH_RuntimeMessageLevel.Warning,
                 $"Unknown kind {string.Join(", ", unknown)}, and no change is flagged that way. Use: {string.Join(", ", Kinds)}.");
 
         var rows = Select(run, kinds, layers);
-        da.SetDataList(0, rows.Select(r => Geometry.ToGoo(r.Pair.B is Guid b ? run.B.GeometryOf(b) : run.A.GeometryOf(r.Pair.A!.Value))));
+        double scale = run.BToA;
+        da.SetDataList(0, rows.Select(r => r.Pair.B is Guid b
+            ? Geometry.ToGoo(run.B.GeometryOf(b), scale)
+            : Geometry.ToGoo(run.A.GeometryOf(r.Pair.A!.Value))));
         da.SetDataList(1, rows.Select(r => r.Info));
         Message = Describe.Plural(rows.Count, "object");
     }
@@ -96,7 +110,8 @@ public sealed class DiffFilterComponent : DittoComponent
         var record = pair.B is Guid b ? run.ObjectB(b) : run.ObjectA(pair.A!.Value);
         string layer = (pair.B is Guid lb ? run.LayerOfB(lb) : run.LayerOfA(pair.A!.Value)) ?? "?";
         string text = $"{Describe.Object(record, (pair.B ?? pair.A)!.Value)} · {string.Join("; ", changes)} · {layer}";
-        if (pair.A is Guid a && run.MatchOfA(a) is { } m) text += " · matched by " + Describe.Evidence(m);
+        if (pair.A is Guid a && run.MatchOfA(a) is { } m)
+            text += $" · {Describe.Plural(m.UnchangedProperties, "property", "properties")} unchanged · matched by {Describe.Evidence(m)}";
         return text;
     }
 
@@ -106,14 +121,7 @@ public sealed class DiffFilterComponent : DittoComponent
         "removed" => s.Kind == ChangeKind.Removed,
         "modified" => s.Kind == ChangeKind.Modified,
         "flagged" => s.Flags.Count > 0,
-        _ => (s.Kind == ChangeKind.Modified && s.Change is { } c && Settings.Normalize(Keyword(c.Property)) == kind)
-            || s.Flags.Any(f => Settings.Normalize(f) == kind),
-    };
-
-    private static string Keyword(PropertyKind p) => p switch
-    {
-        PropertyKind.Transform => "moved",
-        PropertyKind.BlockContent => "block",
-        _ => Describe.Name(p),
+        _ => (s.Kind == ChangeKind.Modified && s.Change is { } c && Vocabulary.KindsOf(kind).Contains(c.Property))
+            || s.Flags.Any(f => Vocabulary.Normalize(f) == kind),
     };
 }
