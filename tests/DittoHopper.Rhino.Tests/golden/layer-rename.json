@@ -20,11 +20,15 @@
     "units": "millimeters",
     "tolerance": 0.01,
     "hashGridsMatch": true,
-    "notes": []
+    "notes": [
+      "B doesn't record a current layer (files don't), so the default-layer detector checks only moves to the Default layer."
+    ]
   },
   "settings": {
     "stableKey": "diff:uid",
     "layerInferShare": 0.6,
+    "nudgeFactor": 10,
+    "fuzzyThreshold": 0.75,
     "toggles": {
       "placement": true,
       "shape": true,
@@ -63,6 +67,7 @@
       "inferred": false,
       "confidence": 1,
       "affectedObjects": 4,
+      "flags": [],
       "review": "unreviewed"
     }
   ],
@@ -98,5 +103,17 @@
   ],
   "geometry": [],
   "changeSets": [],
-  "unchangedObjects": 4
+  "unchangedObjects": 4,
+  "layers": [
+    {
+      "a": "00000000-0000-0000-0000-000000000001",
+      "b": "00000000-0000-0000-0000-000000000001",
+      "path": "Walls",
+      "objects": 4,
+      "changeSets": [],
+      "events": [
+        "ev-b14d96332122aa11"
+      ]
+    }
+  ]
 }

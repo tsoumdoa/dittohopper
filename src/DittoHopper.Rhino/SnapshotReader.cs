@@ -70,7 +70,7 @@ internal static class SnapshotReader
         Dictionary<int, Guid> layerIds, Dictionary<int, Guid> materialIds, Dictionary<int, Guid> linetypeIds, Dictionary<int, Guid> groupIds)
     {
         var signatures = new GeometrySignature[owned.Length];
-        Parallel.For(0, owned.Length, i => signatures[i] = GeometryHasher.Signature(owned[i], GeometryHasher.Hash(owned[i], grid, names)));
+        Parallel.For(0, owned.Length, i => signatures[i] = GeometryHasher.Signature(owned[i], GeometryHasher.Hash(owned[i], grid, names), src.Tolerance));
 
         var records = objects.Select((o, i) => ObjectRecord(o, owned[i], signatures[i], layerIds, materialIds, linetypeIds, groupIds)).ToList();
         var geometry = new Dictionary<Guid, RhinoSnapshot.Entry>(objects.Count);

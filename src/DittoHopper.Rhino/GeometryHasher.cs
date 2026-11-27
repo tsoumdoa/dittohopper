@@ -89,12 +89,16 @@ internal static class GeometryHasher
     public static ulong NestedPlacement(InstanceReferenceGeometry i, double grid) =>
         AddXform(new CanonicalHash("nested-instance", grid), i.Xform).Finish();
 
-    /// <summary>Length, area, volume, centroid and tight bounding box, measured once per snapshot.</summary>
-    public static GeometrySignature Signature(GeometryBase g, ulong hash)
+    /// <summary>
+    /// Length, area, volume, centroid, tight bounding box and topology summary (<see cref="Measure.Summary"/>,
+    /// naked edges joined within <paramref name="tol"/>), measured once per snapshot.
+    /// </summary>
+    public static GeometrySignature Signature(GeometryBase g, ulong hash, double tol)
     {
         var box = g.GetBoundingBox(true);
         double length = 0, area = 0, volume = 0;
         Point3d? centroid = null;
+        var summary = g is Extrusion ? null : Measure.Summary(g, tol);
         switch (g)
         {
             case Point p:
@@ -109,7 +113,7 @@ internal static class GeometryHasher
                 break;
             case Extrusion e:
                 using (var b = e.ToBrep(true))
-                    if (b is not null) (area, volume, centroid) = Mass(b);
+                    if (b is not null) ((area, volume, centroid), summary) = (Mass(b), Measure.Summary(b, tol));
                 break;
             case Surface s:
                 using (var ap = AreaMassProperties.Compute(s, true, true, false, false))
@@ -136,6 +140,11 @@ internal static class GeometryHasher
             Volume = volume,
             Centroid = Vec(centroid ?? (box.IsValid ? box.Center : Point3d.Origin)),
             BBox = box.IsValid ? new BBox(Vec(box.Min), Vec(box.Max)) : default,
+            Closed = summary?.Closed ?? false,
+            Faces = summary?.Faces ?? 0,
+            BoundaryLoops = summary?.Loops ?? 0,
+            BoundaryLength = summary?.Boundary ?? 0,
+            Components = summary?.Components ?? 0,
         };
     }
 

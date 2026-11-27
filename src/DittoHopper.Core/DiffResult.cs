@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace DittoHopper.Core;
 
 /// <summary>
@@ -20,6 +22,8 @@ public sealed record DiffResult
     public IReadOnlyList<ChangeSet> ChangeSets { get; init; } = [];
     /// <summary>Matched pairs with no change at all.</summary>
     public int UnchangedObjects { get; init; }
+    /// <summary>The layer matrix rows: what touched each layer. <see cref="DiffSummary"/> turns them into a status.</summary>
+    public IReadOnlyList<LayerRow> Layers { get; init; } = [];
 
     /// <summary>A copy with the review state of one change set or table event set. Unknown ids throw.</summary>
     public DiffResult WithReview(string id, ReviewState state)
@@ -83,19 +87,32 @@ public sealed record TableEvent
     /// material or linetype, or group members. Counted in B, or in A when the entry is gone from B.
     /// </summary>
     public int AffectedObjects { get; init; }
+    /// <summary>Detector ids: <see cref="Detectors.OutsideScope"/> for a layer event outside the declared scope.</summary>
+    public IReadOnlyList<string> Flags { get; init; } = [];
     public ReviewState Review { get; init; }
+
+    /// <summary>Not yet marked intended, and flagged, as for <see cref="ChangeSet.NeedsLook"/>.</summary>
+    [JsonIgnore]
+    public bool NeedsLook => Review != ReviewState.Intended && Flags.Count > 0;
 }
 
 public enum MatchedBy { StableKey, Guid, GeometryHash, ShapeSignature, Fuzzy, Manual }
 
-/// <summary>One A object paired with one B object, with the evidence for it.</summary>
-public sealed record Match(Guid A, Guid B, MatchedBy By, double Confidence, int UnchangedProperties);
+/// <summary>One A object paired with one B object, with the evidence for it. Fuzzy pairs carry their score as confidence.</summary>
+public sealed record Match(Guid A, Guid B, MatchedBy By, double Confidence, int UnchangedProperties)
+{
+    /// <summary>A fuzzy pair (matching pass 5): plausible, not certain, so it belongs in the review bucket.</summary>
+    [JsonIgnore]
+    public bool NeedsReview => By == MatchedBy.Fuzzy;
+}
 
 /// <summary>What a change is about. Object properties and table properties share one vocabulary.</summary>
 public enum PropertyKind
 {
     Layer, Name, Color, Material, Linetype, PrintWidth, DisplayOrder, UserText, Groups,
     Block, BlockContent, Transform, Geometry, Visible, Locked, Content,
+    /// <summary>A fuzzy pairing with no other change: the set that keeps it in review.</summary>
+    Pairing,
 }
 
 /// <summary>
@@ -111,9 +128,10 @@ public sealed record PropertyChange(
     ValueSource? ToSource = null);
 
 /// <summary>
-/// The geometry ladder's verdict. <see cref="Unclassified"/>: the hash differs, and the shape is neither the same
-/// (<see cref="DataOnly"/>) nor rigidly moved (<see cref="Moved"/>); it is not yet classified further (steps 4–5).
-/// <see cref="DataOnly"/> pairs are listed but never count as changes.
+/// The geometry ladder's verdict. <see cref="Unclassified"/>: the hash differs but the ladder can't say how, because
+/// there is no geometry service or the pair can't be measured (edited text, for example).
+/// <see cref="DataOnly"/> pairs are listed but never count as changes. <see cref="Edited"/> with a
+/// <see cref="GeometryChange.Rigid"/> is "moved + edited": the transform, then the points it doesn't explain.
 /// </summary>
 public enum GeometryLevel { Unclassified, Unchanged, DataOnly, Moved, Edited, Reshaped, TopologyChanged }
 
@@ -123,9 +141,12 @@ public sealed record GeometryChange
     public required Guid B { get; init; }
     public required GeometryLevel Level { get; init; }
     public string? Detail { get; init; }
+    /// <summary>Moved: the transform. Edited: the rigid part of a "moved + edited" pair, else null.</summary>
     public Xform? Rigid { get; init; }
+    /// <summary>Edited: the farthest moved point. Otherwise the shape deviation.</summary>
     public double? MaxDeviation { get; init; }
     public double? MeanDeviation { get; init; }
+    /// <summary>Edited: A's control point or vertex indices that moved (after the rigid part, if any).</summary>
     public IReadOnlyList<int>? MovedIndices { get; init; }
 }
 
@@ -148,8 +169,31 @@ public sealed record ChangeSet
     /// <summary>For Added (B's layer) and Removed (A's layer) sets.</summary>
     public string? Layer { get; init; }
     public required IReadOnlyList<ObjectPair> Objects { get; init; }
-    /// <summary>Detector ids. Detectors arrive after M1, so this is empty for now.</summary>
+    /// <summary>
+    /// Detector ids (<see cref="Detectors"/>), sorted. Objects with different per-object flags never share a set;
+    /// <see cref="Detectors.LoneDeletion"/> and <see cref="Detectors.MassChange"/> are judged on the whole set.
+    /// </summary>
     public IReadOnlyList<string> Flags { get; init; } = [];
     public string? RootCauseEventId { get; init; }
     public ReviewState Review { get; init; }
+
+    /// <summary>Not yet marked intended, and flagged (being outside the declared scope is a flag).</summary>
+    [JsonIgnore]
+    public bool NeedsLook => Review != ReviewState.Intended && Flags.Count > 0;
+}
+
+/// <summary>
+/// One row of the layer matrix: an A layer and its B counterpart, or a B layer with no A counterpart (an added layer
+/// or a split target). Lists the change sets with an object on it, on either side, and the layer table events about it.
+/// </summary>
+public sealed record LayerRow
+{
+    public Guid? A { get; init; }
+    public Guid? B { get; init; }
+    /// <summary>A's full path, or B's for a B-only row.</summary>
+    public required string Path { get; init; }
+    /// <summary>Objects on the layer in A (in B for a B-only row).</summary>
+    public int Objects { get; init; }
+    public IReadOnlyList<string> ChangeSets { get; init; } = [];
+    public IReadOnlyList<string> Events { get; init; } = [];
 }

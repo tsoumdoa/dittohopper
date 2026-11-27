@@ -172,7 +172,8 @@ public class CompareTests
             n => Assert.StartsWith("Tolerances differ: A 0.01, B 0.1", n),
             n => Assert.StartsWith("Hash grids differ", n),
             n => Assert.StartsWith("Block definition content could not be compared", n),
-            n => Assert.Equal("B skipped: linked block 'Site'", n));
+            n => Assert.Equal("B skipped: linked block 'Site'", n),
+            n => Assert.StartsWith("B doesn't record a current layer", n));
         // 1.5 m is 1500 mm: the instance did not move.
         Assert.Empty(r.ChangeSets);
     }

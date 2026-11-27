@@ -15,6 +15,7 @@ internal sealed class SnapshotBuilder
     public readonly List<TableRecord> Linetypes = [];
     public readonly List<GroupRecord> Groups = [];
     public readonly List<ObjectRecord> Objects = [];
+    public Guid? CurrentLayer;
 
     public SnapshotBuilder(int firstId = 1) => next = firstId;
 
@@ -44,12 +45,13 @@ internal sealed class SnapshotBuilder
         Linetypes = [.. Linetypes],
         Groups = [.. Groups],
         Objects = [.. Objects],
+        CurrentLayerId = CurrentLayer,
     };
 
-    public Guid Layer(string name, Guid? parent = null, int color = unchecked((int)0xFF000000))
+    public Guid Layer(string name, Guid? parent = null, int color = unchecked((int)0xFF000000), bool locked = false, bool visible = true)
     {
         var id = NewId();
-        Layers.Add(new LayerRecord { Id = id, Name = name, ParentId = parent, Color = color });
+        Layers.Add(new LayerRecord { Id = id, Name = name, ParentId = parent, Color = color, Locked = locked, Visible = visible });
         return id;
     }
 
@@ -81,6 +83,20 @@ internal sealed class SnapshotBuilder
         };
         Objects.Add(edit is null ? o : edit(o));
         return id;
+    }
+
+    /// <summary>A box-like solid with a size, so matching passes 4 and 5 have a shape to compare.</summary>
+    public Guid Solid(Guid layer, Vec3 at, double size = 100, ObjectKind kind = ObjectKind.Brep, Func<ObjectRecord, ObjectRecord>? edit = null) =>
+        Object(layer, o => (edit ?? (x => x))(o with { Kind = kind, Geometry = SolidShape(o.Geometry.Hash, at, size) }));
+
+    public static GeometrySignature SolidShape(ulong hash, Vec3 at, double size)
+    {
+        var half = new Vec3(size / 2, size / 2, size / 2);
+        return new GeometrySignature
+        {
+            Hash = hash, Area = 6 * size * size, Volume = size * size * size, Centroid = at,
+            BBox = new BBox(at - half, at + half), Closed = true, Faces = 6,
+        };
     }
 
     public List<Guid> Many(Guid layer, int count, Func<ObjectRecord, ObjectRecord>? edit = null) =>

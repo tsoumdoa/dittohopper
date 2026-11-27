@@ -20,6 +20,21 @@ public sealed record DiffSettings
     /// </summary>
     public double? ShapeTolerance { get; init; }
 
+    /// <summary>
+    /// The nudge threshold is this many absolute tolerances (the comparison's, never <see cref="ShapeTolerance"/>): a
+    /// move longer than the tolerance but shorter than the threshold is flagged as a possible slip (<see cref="Detectors.TinyNudge"/>).
+    /// </summary>
+    public double NudgeFactor { get; init; } = 10;
+
+    /// <summary>The lowest score at which matching pass 5 pairs two objects. Such pairs need review.</summary>
+    public double FuzzyThreshold { get; init; } = 0.75;
+
+    /// <summary>
+    /// "I meant to change": a layer path glob such as <c>Facade::*</c> (<c>*</c> is any text, <c>?</c> one
+    /// character, case ignored). Changes on other layers are flagged <see cref="Detectors.OutsideScope"/>. Null = no scope.
+    /// </summary>
+    public string? ScopeGlob { get; init; }
+
     public PropertyToggles Toggles { get; init; } = new();
 }
 

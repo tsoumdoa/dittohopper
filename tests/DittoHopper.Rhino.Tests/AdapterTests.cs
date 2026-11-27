@@ -58,7 +58,7 @@ public sealed class AdapterTests(RhinoHost host)
         // A line and the same degree-1 NURBS curve are the same shape: equal hashes, different representations.
         var line = new LineCurve(new Point3d(0, 0, 0), new Point3d(100, 0, 0));
         Assert.Equal(Hash(line), Hash(line.ToNurbsCurve()));
-        Assert.NotEqual(GeometryHasher.Signature(line, 0).Representation, GeometryHasher.Signature(line.ToNurbsCurve(), 0).Representation);
+        Assert.NotEqual(GeometryHasher.Signature(line, 0, Model.Tolerance).Representation, GeometryHasher.Signature(line.ToNurbsCurve(), 0, Model.Tolerance).Representation);
     });
 
     [RhinoFact]

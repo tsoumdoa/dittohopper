@@ -186,10 +186,18 @@ public sealed class FixtureTests(RhinoHost host, ITestOutputHelper output)
     [RhinoFact]
     public void TinyNudge() => host.Run(() =>
     {
-        var run = Check("tiny-nudge", FixturePair.Create("tiny-nudge", f => Columns(f, 4), b => Model.Transform(b, "column-2", Transform.Translation(0.8, 0, 0))),
-            1, "Moved (the Tiny nudge flag comes in M3)");
+        // The plan's 0.8 mm slip, in a model with a 0.1 mm tolerance: the default nudge threshold (10 × tolerance) is 1 mm.
+        var run = Check("tiny-nudge", FixturePair.Create("tiny-nudge",
+                f =>
+                {
+                    Columns(f, 4);
+                    f.Settings.ModelAbsoluteTolerance = 0.1;
+                },
+                b => Model.Transform(b, "column-2", Transform.Translation(0.8, 0, 0))),
+            1, "Moved, flagged Tiny nudge");
         var set = Assert.Single(run.Result.ChangeSets);
         Assert.Equal(new PropertyChange(PropertyKind.Transform, null, null, "moved 0.8 mm in X"), set.Change);
+        Assert.Equal([Detectors.TinyNudge], set.Flags);
         Assert.Equal(GeometryLevel.Moved, Assert.Single(run.Result.Geometry).Level);
     });
 
@@ -209,9 +217,10 @@ public sealed class FixtureTests(RhinoHost host, ITestOutputHelper output)
                 int dflt = LayerNamed(b, "Default").Index;
                 foreach (var o in Model.All(b).Take(23)) o.Attributes.LayerIndex = dflt;
             }),
-            1, "1 change set (the flag comes in M3)");
+            1, "1 change set, flagged");
         var set = Assert.Single(run.Result.ChangeSets);
         Assert.Equal((new PropertyChange(PropertyKind.Layer, null, "Walls", "Default"), 23), (set.Change, set.Objects.Count));
+        Assert.Equal([Detectors.DefaultLayer], set.Flags);
     });
 
     private static NurbsCurve Wavy() => Curve.CreateInterpolatedCurve(
@@ -267,9 +276,12 @@ public sealed class FixtureTests(RhinoHost host, ITestOutputHelper output)
                 s.Points.SetPoint(1, 1, s.Points.GetControlPoint(1, 1).Location + new Vector3d(0, 0, 50));
                 Model.Replace(b, "surface", s);
             }),
-            1, "Hash differs; Edited with CV index comes in M3");
-        Assert.All(run.Result.Geometry, g => Assert.Equal(GeometryLevel.Unclassified, g.Level));
-        Assert.Equal(2, run.Result.Geometry.Count);
+            1, "Edited, CV index and distance");
+        Assert.Equal(
+            [(GeometryLevel.Edited, "1 of 16 control points moved: #5 by 50 mm"), (GeometryLevel.Edited, "1 of 7 control points moved: #2 by 50 mm")],
+            run.Result.Geometry.Select(g => (g.Level, g.Detail!)).OrderBy(g => g.Item2, StringComparer.Ordinal));
+        Assert.All(run.Result.Geometry, g => Assert.Equal(50, g.MaxDeviation));
+        Assert.Equal("edited", Assert.Single(run.Result.ChangeSets).Change!.To);
     });
 
     [RhinoFact]
@@ -315,8 +327,9 @@ public sealed class FixtureTests(RhinoHost host, ITestOutputHelper output)
                 Assert.False(open.IsSolid);
                 Model.Replace(b, "box", open);
             }),
-            1, "Hash differs; Topology changed comes in M3");
-        Assert.Equal(GeometryLevel.Unclassified, Assert.Single(run.Result.Geometry).Level);
+            1, "Topology changed: solid became open");
+        var g = Assert.Single(run.Result.Geometry);
+        Assert.Equal((GeometryLevel.TopologyChanged, "solid became open, face removed or merged"), (g.Level, g.Detail));
     });
 
     /// <summary>Inner (a box) is nested in Outer (Inner + a line). Three Outer and two Inner instances, ids kept.</summary>
@@ -392,9 +405,10 @@ public sealed class FixtureTests(RhinoHost host, ITestOutputHelper output)
                 copy.SetUserString(Model.TruthKey, "column-1-copy");
                 b.Objects.Add(original.Geometry.Duplicate(), copy);
             }),
-            1, "Added (the Duplicate flag comes in M3)");
+            1, "Added, flagged Duplicate");
         var set = Assert.Single(run.Result.ChangeSets);
         Assert.Equal((ChangeKind.Added, 1), (set.Kind, set.Objects.Count));
+        Assert.Equal([Detectors.Duplicate], set.Flags);
         Assert.All(run.Result.Matches, m => Assert.Equal(MatchedBy.Guid, m.By));
     });
 }

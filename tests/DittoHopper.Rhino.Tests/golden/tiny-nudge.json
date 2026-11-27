@@ -3,28 +3,32 @@
   "a": {
     "source": "A.3dm",
     "units": "millimeters",
-    "absoluteTolerance": 0.01,
+    "absoluteTolerance": 0.1,
     "angleTolerance": 0.017453292519943295,
-    "hashGrid": 0.01,
+    "hashGrid": 0.1,
     "skipped": []
   },
   "b": {
     "source": "B.3dm",
     "units": "millimeters",
-    "absoluteTolerance": 0.01,
+    "absoluteTolerance": 0.1,
     "angleTolerance": 0.017453292519943295,
-    "hashGrid": 0.01,
+    "hashGrid": 0.1,
     "skipped": []
   },
   "header": {
     "units": "millimeters",
-    "tolerance": 0.01,
+    "tolerance": 0.1,
     "hashGridsMatch": true,
-    "notes": []
+    "notes": [
+      "B doesn't record a current layer (files don't), so the default-layer detector checks only moves to the Default layer."
+    ]
   },
   "settings": {
     "stableKey": "diff:uid",
     "layerInferShare": 0.6,
+    "nudgeFactor": 10,
+    "fuzzyThreshold": 0.75,
     "toggles": {
       "placement": true,
       "shape": true,
@@ -110,7 +114,7 @@
   ],
   "changeSets": [
     {
-      "id": "cs-0aff163e7568fd38",
+      "id": "cs-fe60567c97eca5b0",
       "kind": "modified",
       "change": {
         "property": "transform",
@@ -122,9 +126,23 @@
           "b": "00000000-0000-0000-0000-000000000004"
         }
       ],
-      "flags": [],
+      "flags": [
+        "tiny-nudge"
+      ],
       "review": "unreviewed"
     }
   ],
-  "unchangedObjects": 3
+  "unchangedObjects": 3,
+  "layers": [
+    {
+      "a": "00000000-0000-0000-0000-000000000001",
+      "b": "00000000-0000-0000-0000-000000000001",
+      "path": "Columns",
+      "objects": 4,
+      "changeSets": [
+        "cs-fe60567c97eca5b0"
+      ],
+      "events": []
+    }
+  ]
 }

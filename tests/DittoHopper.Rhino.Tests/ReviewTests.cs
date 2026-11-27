@@ -9,7 +9,7 @@ using RhinoDoc = Rhino.RhinoDoc;
 
 namespace DittoHopper.Rhino.Tests;
 
-/// <summary>Regression tests for the M2 review round 1 findings: one focused case each.</summary>
+/// <summary>Regression tests for review findings (M2 and M3): one focused case each.</summary>
 [Collection("Rhino")]
 [Trait("Category", "RhinoIntegration")]
 public sealed class ReviewTests(RhinoHost host)
@@ -48,7 +48,7 @@ public sealed class ReviewTests(RhinoHost host)
         for (int y = 0; y < 3; y++)
             for (int x = 0; x < 3; x++)
                 if (x != 1 || y != 1) holed.Faces.AddFace(y * 4 + x, y * 4 + x + 1, y * 4 + x + 5, y * 4 + x + 4);
-        Assert.Equal(GeometryLevel.Unclassified, Level(Compare(full, holed)));
+        Assert.Equal(GeometryLevel.TopologyChanged, Level(Compare(full, holed)));   // not Data-only: a hole appeared
     });
 
     /// <summary>50 control points in U with ten knots clustered near 0, and a 1 mm bump among them.</summary>
@@ -67,10 +67,10 @@ public sealed class ReviewTests(RhinoHost host)
     [RhinoFact]
     public void ALocalBumpAmongClusteredKnotsIsSeen() => host.Run(() =>
     {
-        Assert.Equal(GeometryLevel.Unclassified, Level(Compare(Clustered(false), Clustered(true))));
+        Assert.Equal(GeometryLevel.Edited, Level(Compare(Clustered(false), Clustered(true))));   // not Data-only: one control point moved
         var movedBump = Clustered(true);
         movedBump.Translate(0, 0, 20);
-        Assert.Equal(GeometryLevel.Unclassified, Level(Compare(Clustered(false), movedBump)));
+        Assert.Equal(GeometryLevel.Edited, Level(Compare(Clustered(false), movedBump)));   // moved + edited, not Moved
         var moved = Clustered(false);
         moved.Translate(0, 0, 20);
         Assert.Equal(GeometryLevel.Moved, Level(Compare(Clustered(false), moved)));
@@ -159,7 +159,7 @@ public sealed class ReviewTests(RhinoHost host)
     [RhinoFact]
     public void AHoleMovedWithinAMeshIsNotDataOnly() => host.Run(() =>
     {
-        Assert.Equal(GeometryLevel.Unclassified, Level(Compare(Ring(20), Ring(70))));
+        Assert.Equal(GeometryLevel.Edited, Level(Compare(Ring(20), Ring(70))));   // the hole's vertices moved: not Data-only
         var moved = Ring(20);
         moved.Translate(5, 3, 0);
         Assert.Equal(GeometryLevel.Moved, Level(Compare(Ring(20), moved)));
@@ -178,13 +178,14 @@ public sealed class ReviewTests(RhinoHost host)
     }
 
     [RhinoFact]
-    public void UnmeasurablePairsUnderAFinerToleranceAreUnclassified() => host.Run(() =>
+    public void UnmeasurablePairsUnderAFinerToleranceAreNeverDataOnlyOrMoved() => host.Run(() =>
     {
         var fine = new DiffSettings { ShapeTolerance = 0.001 };
-        Assert.Equal(GeometryLevel.Unclassified, Level(Compare(Dense(), Dense(0.002), fine)));
+        // Too dense to sample, so never Data-only or Moved; the control points still compare index by index (step 4).
+        Assert.Equal(GeometryLevel.Edited, Level(Compare(Dense(), Dense(0.002), fine)));
         var movedBump = Dense(0.002);
         movedBump.Translate(10, 0, 0);
-        Assert.Equal(GeometryLevel.Unclassified, Level(Compare(Dense(), movedBump, fine)));
+        Assert.Equal(GeometryLevel.Edited, Level(Compare(Dense(), movedBump, fine)));   // moved + edited
         Assert.Equal(GeometryLevel.Unclassified, Level(Compare(new TextDot("label", Point3d.Origin), new TextDot("label", new Point3d(0.002, 0, 0)), fine)));
 
         // At the default tolerance the exact hash still proves an over-budget move.
@@ -274,5 +275,42 @@ public sealed class ReviewTests(RhinoHost host)
         snapshot.Dispose();
         Assert.Equal(Samples.All.Count, snapshot.Model.Objects.Count);
         Assert.Throws<ObjectDisposedException>(() => RhinoDiff.Diff(snapshot, snapshot));
+    });
+
+    /// <summary>Two closed tetrahedra, or one closed octahedron: both eight faces with no boundary.</summary>
+    private static Mesh Pieces(bool two)
+    {
+        var mesh = new Mesh();
+        if (two)
+            foreach (int x in new[] { 0, 30 })
+            {
+                int n = mesh.Vertices.Count;
+                mesh.Vertices.Add(x, 0, 0);
+                mesh.Vertices.Add(x + 10, 0, 0);
+                mesh.Vertices.Add(x, 10, 0);
+                mesh.Vertices.Add(x, 0, 10);
+                mesh.Faces.AddFace(n, n + 2, n + 1);
+                mesh.Faces.AddFace(n, n + 1, n + 3);
+                mesh.Faces.AddFace(n + 1, n + 2, n + 3);
+                mesh.Faces.AddFace(n + 2, n, n + 3);
+            }
+        else
+        {
+            foreach (var (x, y, z) in new[] { (0, 0, 0), (10, 0, 0), (10, 10, 0), (0, 10, 0), (5, 5, 10), (5, 5, -10) })
+                mesh.Vertices.Add(x, y, z);
+            for (int i = 0; i < 4; i++)
+            {
+                mesh.Faces.AddFace(i, (i + 1) % 4, 4);
+                mesh.Faces.AddFace((i + 1) % 4, i, 5);
+            }
+        }
+        return mesh;
+    }
+
+    [RhinoFact]
+    public void TwoMeshPiecesJoinedIntoOneIsATopologyChange() => host.Run(() =>
+    {
+        var g = Assert.Single(Compare(Pieces(true), Pieces(false)).Geometry);
+        Assert.Equal((GeometryLevel.TopologyChanged, "pieces joined"), (g.Level, g.Detail));
     });
 }
