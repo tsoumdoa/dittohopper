@@ -46,7 +46,7 @@ public sealed class RhinoHost : IDisposable
         SetDllDirectory(system);
         AssemblyLoadContext.Default.Resolving += (context, name) =>
         {
-            foreach (var folder in new[] { Path.Combine(system, "netcore"), system })
+            foreach (var folder in new[] { Path.Combine(system, "netcore"), system, Path.Combine(system, "..", "Plug-ins", "Grasshopper") })
             {
                 var path = Path.Combine(folder, name.Name + ".dll");
                 if (File.Exists(path)) return context.LoadFromAssemblyPath(path);
@@ -68,10 +68,16 @@ public sealed class RhinoHost : IDisposable
         BootTime = clock.Elapsed;
     }
 
+#if DITTOHOPPER_GRASSHOPPER_TESTS
+    // Grasshopper is a Rhino plug-in, and /safemode skips plug-ins.
+    private static readonly string[] Arguments = ["/nosplash", "/notemplate"];
+#else
+    private static readonly string[] Arguments = ["/nosplash", "/notemplate", "/safemode"];
+#endif
+
     private void HostLoop(ManualResetEventSlim ready)
     {
-        using var core = new global::Rhino.Runtime.InProcess.RhinoCore(
-            ["/nosplash", "/notemplate", "/safemode"], global::Rhino.Runtime.InProcess.WindowStyle.NoWindow);
+        using var core = new global::Rhino.Runtime.InProcess.RhinoCore(Arguments, global::Rhino.Runtime.InProcess.WindowStyle.NoWindow);
         ready.Set();
         foreach (var action in _queue.GetConsumingEnumerable()) action();
     }

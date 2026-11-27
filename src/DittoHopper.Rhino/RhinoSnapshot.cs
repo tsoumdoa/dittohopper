@@ -11,9 +11,10 @@ namespace DittoHopper.Rhino;
 /// which <see cref="RhinoGeometryService"/> needs for the geometry ladder. Call from a thread that may use
 /// RhinoCommon; hashing runs in parallel internally.
 /// <para>
-/// The snapshot owns copies of the geometry: whoever creates one disposes it (a cache disposes the snapshot it
-/// replaces). <see cref="Model"/> stays usable after disposal, since it is plain data; diffing with the
-/// geometry ladder needs both snapshots undisposed.
+/// The snapshot owns copies of the geometry. Dispose it only when nothing else can still use it; otherwise drop
+/// it and the geometry's finalizers release it (the Grasshopper components do this, since their outputs may
+/// outlive their caches). <see cref="Model"/> stays usable after disposal, since it is plain data; diffing with
+/// the geometry ladder needs both snapshots undisposed.
 /// </para>
 /// </summary>
 public sealed class RhinoSnapshot : IDisposable
@@ -21,13 +22,20 @@ public sealed class RhinoSnapshot : IDisposable
     internal readonly record struct Entry(GeometryBase Geometry, GeometrySignature Signature);
 
     private readonly IReadOnlyDictionary<Guid, Entry> geometry;
+    /// <summary>Set on a <see cref="WithModel"/> view: the snapshot that owns the shared geometry.</summary>
+    private readonly RhinoSnapshot? owner;
     private bool disposed;
 
-    internal RhinoSnapshot(ModelSnapshot model, IReadOnlyDictionary<Guid, Entry> geometry, HashNames names)
+    private readonly IReadOnlyDictionary<Guid, IReadOnlyList<GeometryBase>> definitions;
+
+    internal RhinoSnapshot(ModelSnapshot model, IReadOnlyDictionary<Guid, Entry> geometry, HashNames names,
+        IReadOnlyDictionary<Guid, IReadOnlyList<GeometryBase>> definitions, RhinoSnapshot? owner = null)
     {
         Model = model;
         this.geometry = geometry;
         Names = names;
+        this.definitions = definitions;
+        this.owner = owner;
     }
 
     public ModelSnapshot Model { get; }
@@ -37,7 +45,7 @@ public sealed class RhinoSnapshot : IDisposable
     {
         get
         {
-            ObjectDisposedException.ThrowIf(disposed, this);
+            ObjectDisposedException.ThrowIf((owner ?? this).disposed, this);
             return geometry;
         }
     }
@@ -45,12 +53,33 @@ public sealed class RhinoSnapshot : IDisposable
     /// <summary>Releases the geometry copies. The model data stays readable.</summary>
     public void Dispose()
     {
-        if (disposed) return;
+        if (owner is not null || disposed) return;
         disposed = true;
         foreach (var e in geometry.Values) e.Geometry.Dispose();
+        foreach (var g in definitions.Values.SelectMany(d => d)) g.Dispose();
     }
 
     internal HashNames Names { get; }
+
+    /// <summary>The snapshot's own copy of a top-level object's geometry, or null. Shared: duplicate it before changing it.</summary>
+    public GeometryBase? GeometryOf(Guid id) => Geometry.TryGetValue(id, out var e) ? e.Geometry : null;
+
+    /// <summary>
+    /// A view of this snapshot with a narrowed model, such as one filtered to some layers. <paramref name="model"/>
+    /// must hold a subset of this snapshot's records. The view shares the geometry and owns none of it: disposing
+    /// the view does nothing, and it is unusable once this snapshot is disposed.
+    /// </summary>
+    public RhinoSnapshot WithModel(ModelSnapshot model) => new(model, Geometry, Names, definitions, owner ?? this);
+
+    /// <summary>
+    /// A block definition's member geometry, in definition space (empty for a linked or unknown definition). Nested
+    /// instances stay <see cref="InstanceReferenceGeometry"/>. Shared: duplicate it before changing it.
+    /// </summary>
+    public IReadOnlyList<GeometryBase> DefinitionGeometry(Guid definitionId)
+    {
+        ObjectDisposedException.ThrowIf((owner ?? this).disposed, this);
+        return definitions.TryGetValue(definitionId, out var members) ? members : [];
+    }
 
     /// <summary>Reads a .3dm file without opening it in Rhino. The source label is the file name.</summary>
     public static RhinoSnapshot FromFile(string path)

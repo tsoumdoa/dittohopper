@@ -13,13 +13,38 @@ object rows. Objects are matched by a cascade (stable key, GUID, geometry hash, 
 and every pair records how it was matched and how sure that is. Likely accidents (a stray
 nudge, objects dropped on `Default`, a select-all edit) are flagged first.
 
-**Status: in development.** Nothing is released yet. See the [design](docs/design.md) for
-the full spec and roadmap.
+**Status: early beta.** See the [design](docs/design.md) for the full spec and roadmap.
 
-## Requirements
+## Install
 
 Rhino 8.20 or later on Windows, running .NET 8 (use Rhino's `SetDotNetRuntime` command if
 needed). macOS, Rhino 7 and .NET Framework are not supported yet.
+
+Drop the `.yak` file onto a Rhino window, accept the installation, and restart Rhino. The
+components are on Grasshopper's **DittoHopper** tab.
+
+## Components
+
+| Component | Inputs | Outputs | What it does |
+| --- | --- | --- | --- |
+| Snapshot | Source, Layers, Saved | Snapshot | Captures a `.3dm` file (cached until the file changes), or the open document when Source is empty: live, or as last saved with Saved = True |
+| Diff Settings | Key, Tolerance, Ignore, Scope | Settings | Optional: the user-text key that identifies objects, the shape tolerance (empty = auto), properties to ignore, and Scope: what you meant to change, e.g. `Facade::*` |
+| Model Diff | A, B, Settings | Added, Removed, Modified, Events, Result | Diffs A (before) against B (after). Geometry comes out in the Rhino document's units (A's without one), as Diff Preview draws it. A Panel on Result shows the summary sentence and up to 20 change sets, one line each, suspicious ones first |
+| Diff Filter | Result, Kind, Layers | Objects, Info | Changed objects by kind (`placement`/`moved`, `layer`, `color`, `added`, `needs look`, `review`, a detector such as `tiny-nudge`…) and layer; Info says what changed, what didn't and how each was matched |
+| Diff Preview | Result, Ghost A | | Draws the diff: added green, removed red, modified amber, unchanged grey, blue where only a layer, block, material or linetype the object uses changed |
+| Assert Unchanged | Result, Layers | Pass, Why | A QA gate: fails, with reasons, if anything on those layers changed, if a fuzzy pairing there needs review, or if any pattern matches no layer. It sees only what the Snapshots captured, so a Snapshot Layers filter limits it |
+| Stamp IDs | Objects, Key, Run | Objects | Writes a `diff:uid` into objects that lack one, once per press of a Button on Run. The only component that changes the model |
+
+Layer patterns: `Structure::*` is every layer under `Structure` (not `Structure` itself); `*` matches any
+text, `::` included; `?` one character; case is ignored.
+
+**Try it:** two Snapshots (one with Source set to the last revision's `.3dm`, one with Source
+empty for the open document) into Model Diff A and B, a Panel on Result, and Diff Preview. Add
+Diff Settings with Scope set to what you meant to change, and the summary says what changed outside it.
+
+**Limitations (v0):** files are read on Rhino's main thread, so a large model pauses Grasshopper
+while it is read (once per file version). Geometry outputs give a block instance as its
+insertion point; Diff Preview draws the whole block.
 
 ## Build
 

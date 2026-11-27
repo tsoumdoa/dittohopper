@@ -160,11 +160,20 @@ internal sealed class Flagger
         && objects.Where(p => !fuzzy.Contains(p.A!.Value)).Select(p => TopLevel(ctx.A.ObjectById[p.A!.Value].LayerId))
             .Distinct().Count() >= Detectors.MassChangeLayers;
 
-    /// <summary>Flags layer table events outside the declared scope: any layer they touch, in A or B, misses the glob.</summary>
+    /// <summary>
+    /// Flags table events outside the declared scope: a layer event when any layer it touches, in A or B, misses the
+    /// glob; a block event when any layer of its affected top-level instances does.
+    /// </summary>
     public List<TableEvent> ForEvents(IEnumerable<TableEvent> events) => [.. events.Select(e =>
-        e.Table == TableKind.Layer
-        && ((e.A is Guid a && OutsideA(a)) || (e.B is Guid b && OutsideB(b)) || e.Shares.Any(x => OutsideB(x.B)))
-            ? e with { Flags = [Detectors.OutsideScope] } : e)];
+    {
+        bool outside = e.Table switch
+        {
+            TableKind.Layer => (e.A is Guid a && OutsideA(a)) || (e.B is Guid b && OutsideB(b)) || e.Shares.Any(x => OutsideB(x.B)),
+            TableKind.Block => LayerRows.InstanceLayers(ctx, e) is var (la, lb) && (la.Any(OutsideA) || lb.Any(OutsideB)),
+            _ => false,
+        };
+        return outside ? e with { Flags = [Detectors.OutsideScope] } : e;
+    })];
 
     /// <summary>Adds the set-level flag: lone deletion.</summary>
     public List<ChangeSet> ForSets(List<ChangeSet> sets, IReadOnlyList<LayerRow> layers)

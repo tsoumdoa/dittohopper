@@ -98,7 +98,10 @@ internal static class SnapshotReader
             Objects = records,
             CurrentLayerId = src.CurrentLayer,
         };
-        return new RhinoSnapshot(model, geometry, names);
+        // Member copies for drawing instances; a snapshot keeps them so its file can close.
+        var definitions = src.Blocks.Where(b => !b.Linked).ToDictionary(b => b.Id,
+            b => (IReadOnlyList<GeometryBase>)[.. b.Members.Where(m => m.Geometry is not null).Select(m => Owned(m.Geometry!))]);
+        return new RhinoSnapshot(model, geometry, names, definitions);
     }
 
     private static Dictionary<int, Guid> IndexToId(IEnumerable<ModelComponent> items)
