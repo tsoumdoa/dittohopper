@@ -46,6 +46,8 @@ internal sealed class SortedPoints
         return (best, bestDistance);
     }
 
+    public Vec3 Point(int index) => points[index];
+
     /// <summary>Every point within <paramref name="radius"/>, in index order.</summary>
     public List<int> Within(Vec3 p, double radius)
     {

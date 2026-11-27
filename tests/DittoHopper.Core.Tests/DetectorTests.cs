@@ -239,4 +239,22 @@ public class DetectorTests
         Assert.Equal("default-layer", Detectors.DefaultLayer);
         Assert.Equal("Moved to the Default or current layer", Detectors.Describe(Detectors.DefaultLayer));
     }
+
+    [Fact]
+    public void MassChange_CountsOnlyConfirmedPairs()
+    {
+        // Two confirmed blue → red recolours on Structure and Facade, and a fuzzy-paired replacement on Roof.
+        var a = new SnapshotBuilder();
+        var layers = new[] { a.Layer("Structure"), a.Layer("Facade"), a.Layer("Roof") };
+        var ids = layers.Select((l, i) => a.Solid(l, new Vec3(i * 5000, 0, 0), edit: OwnColor(Blue))).ToList();
+        var b = a.Clone();
+        b.Edit(ids[0], OwnColor(Fixtures.Red));
+        b.Edit(ids[1], OwnColor(Fixtures.Red));
+        b.Edit(b.Rebake(ids[2]), o => OwnColor(Fixtures.Red)(o) with { Geometry = SnapshotBuilder.SolidShape(1, new Vec3(10000, 0, 0), 103) });
+
+        var r = ModelDiff.Diff(a.Build(), b.Build());
+        Assert.Equal(MatchedBy.Fuzzy, r.Matches.Single(m => m.A == ids[2]).By);
+        Assert.Empty(SetOf(r, ids[0]).Flags);
+        Assert.Same(SetOf(r, ids[0]), SetOf(r, ids[1]));
+    }
 }

@@ -80,4 +80,29 @@ public class SummaryTests
         Assert.Equal("Outside Facade, 1 layer change. 1 layer is untouched.", DiffSummary.Sentence(r));
         Assert.Equal((LayerState.ToCheck, 1), DiffSummary.Layers(r).Where(l => l.Row.Path == "Roof").Select(l => (l.State, l.ToCheck)).Single());
     }
+
+    private sealed class SameShape : IGeometryService
+    {
+        public ShapeDeviation? Deviation(Guid a, Guid b, Xform? moveA, double tolerance) => new ShapeDeviation(0);
+        public PointCorrespondence? CorrespondingPoints(Guid a, Guid b) => null;
+        public string? DataOnlyReason(Guid a, Guid b) => "rebuilt";
+        public StructureArrays? Structure(Guid a, Guid b) => null;
+    }
+
+    [Fact]
+    public void APairingUnderReviewIsNotAnObjectChange()
+    {
+        // A Data-only rebake on Roof, paired only by fuzzy score, with Facade in scope.
+        var a = new SnapshotBuilder();
+        a.Layer("Facade");
+        var box = a.Solid(a.Layer("Roof"), new Vec3());
+        var b = a.Clone();
+        b.Edit(b.Rebake(box), o => o with { Geometry = SnapshotBuilder.SolidShape(1, new Vec3(), 100.015) });
+
+        var r = ModelDiff.Diff(a.Build(), b.Build(), new DiffSettings { ScopeGlob = "Facade" }, new SameShape());
+        var set = Assert.Single(r.ChangeSets);
+        Assert.Equal((PropertyKind.Pairing, Detectors.FuzzyMatch), (set.Change!.Property, Assert.Single(set.Flags)));
+        Assert.Equal("Nothing outside Facade changed. 2 layers are untouched. 1 pairing needs review.", DiffSummary.Sentence(r));
+        Assert.All(DiffSummary.Layers(r), l => Assert.Equal(LayerState.Untouched, l.State));
+    }
 }

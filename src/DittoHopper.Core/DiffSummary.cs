@@ -22,7 +22,8 @@ public static class DiffSummary
     /// </summary>
     public static string Sentence(DiffResult r)
     {
-        var look = r.ChangeSets.Where(s => s.NeedsLook).ToList();
+        // Pairing sets are review of a pairing, not changes: they count only as "pairings need review".
+        var look = r.ChangeSets.Where(s => s.NeedsLook && s.Change?.Property != PropertyKind.Pairing).ToList();
         int pairings = r.Matches.Count(m => m.NeedsReview);
         string review = pairings == 0 ? "" : pairings == 1 ? " 1 pairing needs review." : $" {Number(pairings)} pairings need review.";
         if (r.Settings.ScopeGlob is { } scope && !string.IsNullOrWhiteSpace(scope))
@@ -95,7 +96,8 @@ internal static class LayerRows
         {
             if (layer is Guid l && index.TryGetValue(l, out int row)) list(row).Add(id);
         }
-        foreach (var s in sets)
+        // Pairing sets are review of a pairing, not a change to the layer.
+        foreach (var s in sets.Where(s => s.Change?.Property != PropertyKind.Pairing))
             foreach (var p in s.Objects)
             {
                 if (p.A is Guid a) Touch(rowOfA, ctx.A.ObjectById[a].LayerId, i => rows[i].Sets, s.Id);

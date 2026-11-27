@@ -237,4 +237,22 @@ public class ShapeMatchingTests
         Assert.Equal([Detectors.FuzzyMatch], set.Flags);
         Assert.EndsWith("1 pairing needs review.", DiffSummary.Sentence(r));
     }
+
+    [Fact]
+    public void Pass4_TheShapeToleranceGuardMeasuresTheChosenCandidate()
+    {
+        // Two coincident B candidates, 0.002 and 0.008 away; own attributes prefer the farther one, which is
+        // outside the 0.005 shape tolerance, so it must not pair as certain.
+        var a = new SnapshotBuilder();
+        var layer = a.Layer("L");
+        var red = new Sourced<int>(Fixtures.Red, ValueSource.ByObject);
+        var original = a.Solid(layer, new Vec3(), edit: o => o with { Color = red });
+        var b = a.Clone();
+        b.RemoveObject(original);
+        b.Solid(layer, new Vec3(0.002, 0, 0), edit: o => o with { Color = new Sourced<int>(unchecked((int)0xFF0000FF), ValueSource.ByObject) });
+        b.Solid(layer, new Vec3(0.008, 0, 0), edit: o => o with { Color = red });
+
+        var r = ModelDiff.Diff(a.Build(), b.Build(), new DiffSettings { ShapeTolerance = 0.005 });
+        Assert.All(r.Matches, m => Assert.True(m.NeedsReview));
+    }
 }

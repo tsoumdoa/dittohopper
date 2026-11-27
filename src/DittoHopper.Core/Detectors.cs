@@ -110,6 +110,12 @@ internal sealed class Flagger
         var a = ctx.A.ObjectById[row.Pair.A!.Value];
         var b = ctx.B.ObjectById[row.Pair.B!.Value];
         var c = row.Change;
+        // A Pairing row is review of the pairing itself, not an object change: it gets only its fuzzy-match flag.
+        if (c.Property == PropertyKind.Pairing)
+        {
+            yield return Detectors.FuzzyMatch;
+            yield break;
+        }
         if (OutsideA(a.LayerId) || OutsideB(b.LayerId))
             yield return Detectors.OutsideScope;
         if (c.Property == PropertyKind.Layer && IsDefaultOrCurrent(b.LayerId))
@@ -146,12 +152,13 @@ internal sealed class Flagger
     }
 
     /// <summary>
-    /// Mass change: the same modification, with no root cause, on objects under at least
+    /// Mass change: the same modification, with no root cause, on confirmed pairs (not fuzzy ones) under at least
     /// <see cref="Detectors.MassChangeLayers"/> different top-level layers.
     /// </summary>
     public bool IsMassChange(PropertyChange change, string? cause, IEnumerable<ObjectPair> objects) =>
         cause is null && change.Property is not (PropertyKind.Geometry or PropertyKind.BlockContent or PropertyKind.Pairing)
-        && objects.Select(p => TopLevel(ctx.A.ObjectById[p.A!.Value].LayerId)).Distinct().Count() >= Detectors.MassChangeLayers;
+        && objects.Where(p => !fuzzy.Contains(p.A!.Value)).Select(p => TopLevel(ctx.A.ObjectById[p.A!.Value].LayerId))
+            .Distinct().Count() >= Detectors.MassChangeLayers;
 
     /// <summary>Flags layer table events outside the declared scope: any layer they touch, in A or B, misses the glob.</summary>
     public List<TableEvent> ForEvents(IEnumerable<TableEvent> events) => [.. events.Select(e =>

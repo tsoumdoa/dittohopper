@@ -121,7 +121,8 @@ internal sealed class ObjectMatcher
             return (pool[k], d, repeats);
         if (d > tol)
             return null;
-        return (close.Select(i => pool[i]).OrderByDescending(agreement).ThenBy(o => o.Id).First(), d, repeats);
+        int chosen = close.OrderByDescending(i => agreement(pool[i])).ThenBy(i => pool[i].Id).First();
+        return (pool[chosen], Vec3.Distance(at, index.Point(chosen)), repeats);
     }
 
     /// <summary>
