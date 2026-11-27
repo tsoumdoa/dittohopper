@@ -17,14 +17,15 @@ internal sealed class Comparer
     public sealed record Output(List<ChangeRow> Rows, List<Match> Matches, List<GeometryChange> Geometry, int UnchangedObjects);
 
     private readonly DiffContext ctx;
+    private readonly Dictionary<Guid, GeometryChange> ladder;
     private readonly List<ChangeRow> rows = [];
     private readonly List<GeometryChange> geometry = [];
 
-    private Comparer(DiffContext ctx) => this.ctx = ctx;
+    private Comparer(DiffContext ctx, Dictionary<Guid, GeometryChange> ladder) => (this.ctx, this.ladder) = (ctx, ladder);
 
-    public static Output Run(DiffContext ctx, IReadOnlyList<Pair> pairs)
+    public static Output Run(DiffContext ctx, IReadOnlyList<Pair> pairs, IGeometryService? service)
     {
-        var c = new Comparer(ctx);
+        var c = new Comparer(ctx, Ladder(ctx, pairs, service));
         var matches = new List<Match>(pairs.Count);
         int unchangedObjects = 0;
         foreach (var p in pairs)
@@ -35,6 +36,25 @@ internal sealed class Comparer
         }
         return new Output(c.rows, matches, c.geometry, unchangedObjects);
     }
+
+    /// <summary>
+    /// Geometry ladder steps 2–3 for every pair whose geometry hash differs (step 1), keyed by A id. Only those
+    /// pairs pay for deviation sampling, and they run in parallel: each geometry belongs to one pair.
+    /// </summary>
+    private static Dictionary<Guid, GeometryChange> Ladder(DiffContext ctx, IReadOnlyList<Pair> pairs, IGeometryService? service)
+    {
+        var t = ctx.Settings.Toggles;
+        var todo = pairs.Where(p => (t.Placement || t.Shape) && !BothInstances(p.A, p.B) && !SameHash(ctx, p.A, p.B)).ToArray();
+        var results = new GeometryChange[todo.Length];
+        Parallel.For(0, todo.Length, i => results[i] = GeometryLadder.Classify(ctx, service, todo[i].A, todo[i].B));
+        return todo.Select((p, i) => (p.A.Id, results[i])).ToDictionary(x => x.Id, x => x.Item2);
+    }
+
+    private static bool BothInstances(ObjectRecord a, ObjectRecord b) =>
+        a.Kind == ObjectKind.InstanceReference && b.Kind == ObjectKind.InstanceReference;
+
+    private static bool SameHash(DiffContext ctx, ObjectRecord a, ObjectRecord b) =>
+        ctx.Header.HashGridsMatch && a.Kind == b.Kind && a.Geometry.Hash == b.Geometry.Hash;
 
     private (int Changed, int Unchanged) Compare(ObjectRecord a, ObjectRecord b)
     {
@@ -96,15 +116,14 @@ internal sealed class Comparer
                 cause, Ids(string.Join(",", a.GroupIds.Distinct().Order()), string.Join(",", b.GroupIds.Distinct().Order())));
         }
 
-        if (a.Kind == ObjectKind.InstanceReference && b.Kind == ObjectKind.InstanceReference)
+        if (BothInstances(a, b))
         {
             Guid? da = a.BlockDefinitionId, db = b.BlockDefinitionId;
             Check(t.BlockDefinition, da is Guid x ? db is Guid y && ctx.Blocks.Map(x) == y : db is null,
                 () => new PropertyChange(PropertyKind.Block, null, da is Guid x ? sa.BlockLabel(x) : null, db is Guid y ? sb.BlockLabel(y) : null),
                 identity: Ids(da?.ToString(), db?.ToString()));
-            var xb = b.InstanceXform?.ScaleTranslation(ctx.Scale);
-            Check(t.Placement, a.InstanceXform is null ? xb is null : xb is not null && a.InstanceXform.AlmostEquals(xb, ctx.Tolerance),
-                () => new PropertyChange(PropertyKind.Transform, null, a.InstanceXform?.ToString(), xb?.ToString()));
+            var (samePlace, placement) = Placement(a.InstanceXform, b.InstanceXform?.ScaleTranslation(ctx.Scale));
+            Check(t.Placement, samePlace, placement);
 
             // A definition edit is one table event; only edits nested inside the instance's definition are
             // reported on the instance, each with the inner definition's event as its root cause. The inner
@@ -119,21 +138,41 @@ internal sealed class Comparer
                         Emit(new PropertyChange(PropertyKind.BlockContent, sb.BlockLabel(inner), null, null), ev, inner.ToString());
             }
         }
+        else if (ladder.TryGetValue(a.Id, out var g))
+        {
+            geometry.Add(g);
+            // Data-only is the same shape: it is listed, but never a change. A rigid move is Placement, so equal
+            // moves on many objects (and instances) share one change set; anything else is Shape.
+            if (g.Level == GeometryLevel.DataOnly)
+                unchanged++;
+            else if (g.Level == GeometryLevel.Moved)
+                Check(t.Placement, false, () => new PropertyChange(PropertyKind.Transform, null, null, g.Detail));
+            else
+                Check(t.Shape, false, () => new PropertyChange(PropertyKind.Geometry, null, null, null));
+        }
         else if (t.Placement || t.Shape)
         {
-            if (ctx.Header.HashGridsMatch && a.Kind == b.Kind && a.Geometry.Hash == b.Geometry.Hash)
-            {
-                unchanged++;
-            }
-            else
-            {
-                // Step 1 of the geometry ladder. Steps 2–5 (M2) classify the pair and fill in the change.
-                geometry.Add(new GeometryChange { A = a.Id, B = b.Id, Level = GeometryLevel.Unclassified });
-                Emit(new PropertyChange(PropertyKind.Geometry, null, null, null));
-            }
+            unchanged++; // step 1: equal geometry hashes
         }
 
         return (changed, unchanged);
+    }
+
+    /// <summary>
+    /// Instance placement compares as a delta, B relative to A, so the same move of many instances is one
+    /// change. The change describes the delta; a non-invertible A transform falls back to both matrices.
+    /// </summary>
+    private (bool Same, Func<PropertyChange> Change) Placement(Xform? xa, Xform? xb)
+    {
+        double tol = ctx.ShapeTolerance;
+        if (xa?.Inverse() is { } inverse && xb is not null)
+        {
+            var delta = xb.After(inverse);
+            return (delta.AlmostEquals(Xform.Identity, tol),
+                () => new PropertyChange(PropertyKind.Transform, null, null, RigidFit.Describe(delta, ctx.Header.Units, tol)));
+        }
+        return (xa is null ? xb is null : xb is not null && xa.AlmostEquals(xb, tol),
+            () => new PropertyChange(PropertyKind.Transform, null, xa?.ToString(), xb?.ToString()));
     }
 
     /// <summary>

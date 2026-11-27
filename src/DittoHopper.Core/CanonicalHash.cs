@@ -12,7 +12,7 @@ namespace DittoHopper.Core;
 /// </summary>
 public sealed class CanonicalHash
 {
-    private const byte CoordTag = 1, IntTag = 2;
+    private const byte CoordTag = 1, IntTag = 2, TextTag = 3, NullTag = 4;
     private readonly XxHash64 hash = new();
     private readonly double grid;
     private readonly byte[] buffer = new byte[9];
@@ -41,6 +41,17 @@ public sealed class CanonicalHash
 
     /// <summary>Adds an exact integer, such as a degree, a count or an index.</summary>
     public CanonicalHash Add(long value) => Write(IntTag, value);
+
+    /// <summary>Adds text exactly, length-prefixed; null and empty differ.</summary>
+    public CanonicalHash Add(string? text)
+    {
+        if (text is null)
+            return Write(NullTag, 0);
+        byte[] bytes = Encoding.UTF8.GetBytes(text);
+        Write(TextTag, bytes.Length);
+        hash.Append(bytes);
+        return this;
+    }
 
     public ulong Finish() => hash.GetCurrentHashAsUInt64();
 

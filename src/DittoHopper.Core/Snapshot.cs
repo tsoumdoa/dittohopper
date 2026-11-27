@@ -13,6 +13,9 @@ public sealed record ModelSnapshot
     public IReadOnlyList<TableRecord> Linetypes { get; init; } = [];
     public IReadOnlyList<GroupRecord> Groups { get; init; } = [];
     public IReadOnlyList<ObjectRecord> Objects { get; init; } = [];
+
+    /// <summary>The layer that was current when the snapshot was taken; null when unknown (a .3dm file doesn't say).</summary>
+    public Guid? CurrentLayerId { get; init; }
 }
 
 /// <summary>Where a snapshot came from and how its coordinates were hashed.</summary>
@@ -129,7 +132,8 @@ public sealed record ObjectRecord
 
 /// <summary>
 /// The geometry fingerprint: a canonical hash (see <see cref="CanonicalHash"/>) plus position-free and
-/// placement measures. Structure, topology and CV arrays join this in M2, with the geometry ladder.
+/// placement measures. The geometry itself stays with the adapter, which answers the ladder's questions
+/// through <see cref="IGeometryService"/>.
 /// </summary>
 public sealed record GeometrySignature
 {

@@ -9,7 +9,9 @@ namespace DittoHopper.Core;
 /// </summary>
 public static class ModelDiff
 {
-    public static DiffResult Diff(ModelSnapshot a, ModelSnapshot b, DiffSettings? settings = null)
+    /// <param name="geometry">Answers deviation and point questions for geometry ladder steps 2–3. Without it,
+    /// every pair whose geometry hash differs is <see cref="GeometryLevel.Unclassified"/>.</param>
+    public static DiffResult Diff(ModelSnapshot a, ModelSnapshot b, DiffSettings? settings = null, IGeometryService? geometry = null)
     {
         var ctx = new DiffContext(a, b, settings ?? new DiffSettings());
         TableDiff.MatchTables(ctx);
@@ -17,7 +19,7 @@ public static class ModelDiff
         TableDiff.InferLayers(ctx, pairs);
         TableDiff.MatchGroups(ctx, pairs);
         TableDiff.BuildEvents(ctx);
-        var compared = Comparer.Run(ctx, pairs);
+        var compared = Comparer.Run(ctx, pairs, geometry);
 
         return new DiffResult
         {
@@ -71,12 +73,17 @@ internal sealed class DiffContext
         A = new Side(a);
         B = new Side(b);
         Settings = settings;
+        if (settings.ShapeTolerance is double s && !(s > 0 && double.IsFinite(s)))
+            throw new ArgumentOutOfRangeException(nameof(settings), "ShapeTolerance must be a positive number, or null.");
         (Header, Scale) = MakeHeader(a.Info, b.Info, hasBlocks: a.Blocks.Count + b.Blocks.Count > 0);
     }
 
     public IEnumerable<TableMap> AllTableMaps => [Layers, Blocks, Materials, Linetypes, Groups];
 
     public double Tolerance => Header.Tolerance;
+
+    /// <summary>Decides whether a geometry deviation is a real change: the setting, else the tolerance.</summary>
+    public double ShapeTolerance => Settings.ShapeTolerance ?? Tolerance;
 
     private static (DiffHeader, double) MakeHeader(SnapshotInfo a, SnapshotInfo b, bool hasBlocks)
     {
@@ -106,7 +113,7 @@ internal sealed class DiffContext
             : a.Units == b.Units && a.HashGrid == b.HashGrid;
         if (!gridsMatch)
         {
-            notes.Add(Inv($"Hash grids differ: A {a.HashGrid} {a.Units}, B {b.HashGrid} {b.Units}. Geometry-hash matching (pass 3) is skipped and every pair's geometry is unclassified."));
+            notes.Add(Inv($"Hash grids differ: A {a.HashGrid} {a.Units}, B {b.HashGrid} {b.Units}. Geometry-hash matching (pass 3) is skipped and every pair's geometry is compared by shape."));
             if (hasBlocks)
                 notes.Add("Block definition content could not be compared, because it is hashed on those grids.");
         }
