@@ -2,3 +2,5 @@
 # Shell hooks must keep LF endings or the shebang breaks on Windows checkouts.
 .githooks/* text eol=lf
 *.sh text eol=lf
+# Golden diff results: keep them byte-identical on every platform.
+tests/**/golden/*.json text eol=lf

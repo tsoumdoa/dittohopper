@@ -1,0 +1,106 @@
+{
+  "format": 1,
+  "a": {
+    "source": "A",
+    "units": "millimeters",
+    "absoluteTolerance": 0.01,
+    "hashGrid": 0.01,
+    "skipped": []
+  },
+  "b": {
+    "source": "B",
+    "units": "millimeters",
+    "absoluteTolerance": 0.01,
+    "hashGrid": 0.01,
+    "skipped": []
+  },
+  "header": {
+    "units": "millimeters",
+    "tolerance": 0.01,
+    "hashGridsMatch": true,
+    "notes": []
+  },
+  "settings": {
+    "stableKey": "diff:uid",
+    "layerInferShare": 0.6,
+    "toggles": {
+      "placement": true,
+      "shape": true,
+      "layer": true,
+      "blockDefinition": true,
+      "groupMembership": true,
+      "displayOrder": false,
+      "color": true,
+      "material": true,
+      "linetype": true,
+      "printWidth": false,
+      "name": true,
+      "userText": true
+    }
+  },
+  "tableMatches": [
+    {
+      "table": "layer",
+      "a": "00000000-0000-0000-0000-000000000001",
+      "b": "00000000-0000-0000-0000-000000000001",
+      "by": "id",
+      "confidence": 1
+    }
+  ],
+  "tableEvents": [
+    {
+      "id": "ev-4b52330e0cf77053",
+      "table": "layer",
+      "kind": "removed",
+      "a": "00000000-0000-0000-0000-000000000002",
+      "label": "Temp",
+      "shares": [],
+      "inferred": false,
+      "confidence": 1,
+      "affectedObjects": 4,
+      "review": "unreviewed"
+    }
+  ],
+  "matches": [
+    {
+      "a": "00000000-0000-0000-0000-000000000003",
+      "b": "00000000-0000-0000-0000-000000000003",
+      "by": "guid",
+      "confidence": 1,
+      "unchangedProperties": 7
+    },
+    {
+      "a": "00000000-0000-0000-0000-000000000004",
+      "b": "00000000-0000-0000-0000-000000000004",
+      "by": "guid",
+      "confidence": 1,
+      "unchangedProperties": 7
+    }
+  ],
+  "geometry": [],
+  "changeSets": [
+    {
+      "id": "cs-35d2fd3155267245",
+      "kind": "removed",
+      "layer": "Temp",
+      "objects": [
+        {
+          "a": "00000000-0000-0000-0000-000000000005"
+        },
+        {
+          "a": "00000000-0000-0000-0000-000000000006"
+        },
+        {
+          "a": "00000000-0000-0000-0000-000000000007"
+        },
+        {
+          "a": "00000000-0000-0000-0000-000000000008"
+        }
+      ],
+      "flags": [],
+      "rootCauseEventId": "ev-4b52330e0cf77053",
+      "review": "unreviewed"
+    }
+  ],
+  "unchangedObjects": 2
+}
