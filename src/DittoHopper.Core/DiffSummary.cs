@@ -14,8 +14,9 @@ public sealed record LayerStatus(LayerRow Row, LayerState State, int ToCheck);
 public static class DiffSummary
 {
     /// <summary>
-    /// With a scope: "Outside Facade::*, 28 objects changed in 3 sets. 412 layers are untouched." (outside layer
-    /// table events add ", and 1 layer change"; with nothing outside, "Nothing outside Facade::* changed."), plus
+    /// With a scope: "Outside Facade::*, 28 objects changed in 3 sets. 412 layers are untouched." (outside layer and
+    /// block table events add ", and 1 layer change" or "1 block change"; with nothing outside, "Nothing outside
+    /// Facade::* changed."), plus
     /// "1 change set inside it looks suspicious." when one does. Without a scope: "2,104 of 2,416 objects are
     /// identical. 3 change sets look suspicious." Either way, fuzzy pairs add "2 pairings need review.": a pairing
     /// is never identical, whatever its review state. Sets and events marked intended don't count.
@@ -30,11 +31,14 @@ public static class DiffSummary
         {
             scope = scope.Trim();
             var outside = look.Where(s => s.Flags.Contains(Detectors.OutsideScope)).ToList();
-            int events = r.TableEvents.Count(e => e.NeedsLook && e.Flags.Contains(Detectors.OutsideScope));
+            var outsideEvents = r.TableEvents.Where(e => e.NeedsLook && e.Flags.Contains(Detectors.OutsideScope)).ToList();
+            int layerEvents = outsideEvents.Count(e => e.Table == TableKind.Layer);
+            int blockEvents = outsideEvents.Count(e => e.Table == TableKind.Block);
             int objects = outside.SelectMany(s => s.Objects).Distinct().Count();
             var parts = new List<string>();
             if (outside.Count > 0) parts.Add($"{Count(objects, "object")} changed in {Count(outside.Count, "set")}");
-            if (events > 0) parts.Add(Count(events, "layer change"));
+            if (layerEvents > 0) parts.Add(Count(layerEvents, "layer change"));
+            if (blockEvents > 0) parts.Add(Count(blockEvents, "block change"));
             string text = parts.Count == 0 ? $"Nothing outside {scope} changed. " : $"Outside {scope}, {string.Join(", and ", parts)}. ";
             int untouched = Layers(r).Count(l => l.State == LayerState.Untouched);
             text += untouched == 1 ? "1 layer is untouched." : $"{Number(untouched)} layers are untouched.";
@@ -74,6 +78,18 @@ public static class DiffSummary
 /// <summary>Builds the layer matrix rows: which change sets and table events touch each layer, on either side.</summary>
 internal static class LayerRows
 {
+    /// <summary>
+    /// The layers of the top-level instances a block event affects: instances whose definition is the event's block
+    /// or nests it, in A for its A block and in B for its B block.
+    /// </summary>
+    public static (HashSet<Guid> A, HashSet<Guid> B) InstanceLayers(DiffContext ctx, TableEvent e)
+    {
+        static HashSet<Guid> On(Side side, Guid? block) => block is Guid id
+            ? [.. side.Objects.Where(o => o.BlockDefinitionId is Guid d && side.Closure(d).Contains(id)).Select(o => o.LayerId)]
+            : [];
+        return (On(ctx.A, e.A), On(ctx.B, e.B));
+    }
+
     public static List<LayerRow> Build(DiffContext ctx, IReadOnlyList<ChangeSet> sets, IReadOnlyList<TableEvent> events)
     {
         var rows = new List<(Guid? A, Guid? B, string Path, int Objects, SortedSet<string> Sets, SortedSet<string> Events)>();
@@ -108,6 +124,13 @@ internal static class LayerRows
             Touch(rowOfA, e.A, i => rows[i].Events, e.Id);
             Touch(rowOfB, e.B, i => rows[i].Events, e.Id);
             foreach (var share in e.Shares) Touch(rowOfB, share.B, i => rows[i].Events, e.Id);
+        }
+        // A block event touches the layers of the top-level instances it affects.
+        foreach (var e in events.Where(e => e.Table == TableKind.Block))
+        {
+            var (la, lb) = InstanceLayers(ctx, e);
+            foreach (var l in la) Touch(rowOfA, l, i => rows[i].Events, e.Id);
+            foreach (var l in lb) Touch(rowOfB, l, i => rows[i].Events, e.Id);
         }
 
         return [.. rows

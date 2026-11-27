@@ -42,6 +42,33 @@ public class SummaryTests
     }
 
     [Fact]
+    public void ABlockEditUsedOutsideTheScopeIsNotAnAllClear()
+    {
+        // The Window definition is edited; its one instance sits on Walls, outside Facade::*.
+        var a = new SnapshotBuilder();
+        var facade = a.Layer("Facade");
+        var walls = a.Layer("Walls");
+        a.Object(a.Layer("Panels", facade));
+        var window = a.Block("Window", content: 1);
+        a.Instance(walls, window);
+        var b = a.Clone();
+        b.EditBlock(window, d => d with { ContentHash = 2 });
+
+        var r = Fixtures.Diff((a, b), new DiffSettings { ScopeGlob = "Facade::*" });
+
+        var edit = Assert.Single(r.TableEvents);
+        Assert.Equal(TableKind.Block, edit.Table);
+        Assert.Equal([Detectors.OutsideScope], edit.Flags);
+        Assert.Equal("Outside Facade::*, 1 block change. 2 layers are untouched.", DiffSummary.Sentence(r));
+        Assert.Equal(LayerState.ToCheck, DiffSummary.Layers(r).Single(l => l.Row.Path == "Walls").State);
+
+        // Inside the scope, the same edit is no flag, but its layer is still changed rather than untouched.
+        var inside = Fixtures.Diff((a, b), new DiffSettings { ScopeGlob = "Walls" });
+        Assert.Empty(Assert.Single(inside.TableEvents).Flags);
+        Assert.Equal(LayerState.Expected, DiffSummary.Layers(inside).Single(l => l.Row.Path == "Walls").State);
+    }
+
+    [Fact]
     public void LayersAreUntouchedExpectedOrToCheck()
     {
         var r = Fixtures.Diff(Revision(), new DiffSettings { ScopeGlob = "Facade::*" });
