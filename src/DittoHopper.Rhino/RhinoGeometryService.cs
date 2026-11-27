@@ -42,10 +42,8 @@ public sealed class RhinoGeometryService : IGeometryService
         var y = scaledB ?? eb.Geometry;
         if (Measure.Deviation(x, y, tolerance) is not { } d)
             return SameHash(x, eb.Signature.Hash, tolerance);
-        // Measures don't change under a rigid move; B's scale into A's units.
-        var sb = eb.Signature;
-        var measuresB = (sb.Length * scale, sb.Area * scale * scale, sb.Volume * scale * scale * scale);
-        return Measure.SameSummary(x, (ea.Signature.Length, ea.Signature.Area, ea.Signature.Volume), y, measuresB, tolerance) ? d : null;
+        // The snapshots measured both summaries once; a rigid move doesn't change them, and B's scale into A's units.
+        return Measure.SameSummary(x, ea.Signature, y, eb.Signature, scale, tolerance) ? d : null;
     }
 
     public PointCorrespondence? CorrespondingPoints(Guid ia, Guid ib)
@@ -77,6 +75,14 @@ public sealed class RhinoGeometryService : IGeometryService
             _ when CorrespondingPoints(ia, ib) is { } p && p.A.Zip(p.B).All(q => Vec3.Distance(q.First, q.Second) <= tolerance) => "within tolerance",
             _ => "rebuilt",
         };
+    }
+
+    public StructureArrays? Structure(Guid ia, Guid ib)
+    {
+        if (!a.Geometry.TryGetValue(ia, out var ea) || !b.Geometry.TryGetValue(ib, out var eb))
+            return null;
+        using var scaledB = scale == 1 ? null : Transformed(eb.Geometry, Transform.Scale(Point3d.Origin, scale));
+        return Measure.Structure(ea.Geometry, scaledB ?? eb.Geometry);
     }
 
     /// <summary>
@@ -129,31 +135,37 @@ internal static class Measure
     /// <summary>
     /// The same shape must have the same topology summary and nearly the same measures. Lengths may differ by
     /// 2·tol + 1e-4·L; areas by tol·(2·boundary + 8·√A) + 1e-6·A, since moving a surface by up to tol changes
-    /// its area through its boundary and its curvature; volumes by 2·tol·A + 1e-6·V.
+    /// its area through its boundary and its curvature; volumes by 2·tol·A + 1e-6·V. Summaries and measures come
+    /// from the snapshot signatures, B's scaled by <paramref name="scale"/>; the geometries only say the types.
     /// </summary>
-    public static bool SameSummary(GeometryBase x, (double Length, double Area, double Volume) mx,
-        GeometryBase y, (double Length, double Area, double Volume) my, double tol)
+    public static bool SameSummary(GeometryBase x, GeometrySignature sx, GeometryBase y, GeometrySignature sy, double scale, double tol)
     {
-        if (Summary(x, tol) is not { } sx || Summary(y, tol) is not { } sy)
+        if (!HasTopology(x) || !HasTopology(y))
             return true;   // points, clouds and the like have no topology to compare
-        if (sx.Closed != sy.Closed || sx.Loops != sy.Loops)
+        if (sx.Closed != sy.Closed || sx.BoundaryLoops != sy.BoundaryLoops)
             return false;
-        double boundary = Math.Max(sx.Boundary, sy.Boundary), area = Math.Max(mx.Area, my.Area);
-        return Math.Abs(mx.Length - my.Length) <= 2 * tol + 1e-4 * Math.Max(mx.Length, my.Length)
-            && Math.Abs(mx.Area - my.Area) <= tol * (2 * boundary + 8 * Math.Sqrt(area)) + 1e-6 * area
-            && Math.Abs(mx.Volume - my.Volume) <= 2 * tol * area + 1e-6 * Math.Max(mx.Volume, my.Volume);
+        var (length, area, volume) = (sy.Length * scale, sy.Area * scale * scale, sy.Volume * scale * scale * scale);
+        double boundary = Math.Max(sx.BoundaryLength, sy.BoundaryLength * scale), larger = Math.Max(sx.Area, area);
+        return Math.Abs(sx.Length - length) <= 2 * tol + 1e-4 * Math.Max(sx.Length, length)
+            && Math.Abs(sx.Area - area) <= tol * (2 * boundary + 8 * Math.Sqrt(larger)) + 1e-6 * larger
+            && Math.Abs(sx.Volume - volume) <= 2 * tol * larger + 1e-6 * Math.Max(sx.Volume, volume);
     }
 
-    /// <summary>Closed (or solid), number of boundary loops, and total boundary length; null for types without topology.</summary>
-    private static (bool Closed, int Loops, double Boundary)? Summary(GeometryBase g, double tol)
+    private static bool HasTopology(GeometryBase g) => g is Curve or Mesh or Brep or Extrusion or Surface or SubD;
+
+    /// <summary>
+    /// The topology summary the snapshot signature stores: closed (or solid), faces, boundary loops (naked edges
+    /// joined within <paramref name="tol"/>) and their total length. Null for types without topology.
+    /// </summary>
+    public static (bool Closed, int Faces, int Loops, double Boundary)? Summary(GeometryBase g, double tol)
     {
         switch (g)
         {
             case Curve c:
-                return (c.IsClosed, 0, 0);
+                return (c.IsClosed, 0, 0, 0);
             case Mesh m:
                 var naked = m.GetNakedEdges() ?? [];
-                return (m.IsClosed, naked.Length, naked.Sum(p => p.Length));
+                return (m.IsClosed, m.Faces.Count, naked.Length, naked.Sum(p => p.Length));
             default:
                 using (AsBrep(g, out var brep))
                 {
@@ -164,7 +176,7 @@ internal static class Measure
                         var loops = edges.Length == 0 ? [] : Curve.JoinCurves(edges, tol) ?? [];
                         int count = loops.Length;
                         foreach (var l in loops) l.Dispose();
-                        return (brep.IsSolid, count, edges.Sum(e => e.GetLength()));
+                        return (brep.IsSolid, brep.Faces.Count, count, edges.Sum(e => e.GetLength()));
                     }
                     finally
                     {
@@ -428,9 +440,100 @@ internal static class Measure
         return c.TangentAt(t) * d.TangentAt(mid) < 0;
     }
 
-    private static List<double> Knots(NurbsCurve n)
+    private static List<double> Knots(NurbsCurve n) => Normalized(n.Knots.Count, i => n.Knots[i]);
+
+    private static List<double> Normalized(int count, Func<int, double> knot)
     {
-        double k0 = n.Knots[0], span = n.Knots[n.Knots.Count - 1] - k0;
-        return [.. Enumerable.Range(0, n.Knots.Count).Select(i => span > 0 ? (n.Knots[i] - k0) / span : 0)];
+        if (count == 0) return [];
+        double k0 = knot(0), span = knot(count - 1) - k0;
+        return [.. Enumerable.Range(0, count).Select(i => span > 0 ? (knot(i) - k0) / span : 0)];
+    }
+
+    private static bool Same(List<double> x, List<double> y) => x.Count == y.Count && x.Zip(y).All(k => Math.Abs(k.First - k.Second) < 1e-9);
+
+    /// <summary>
+    /// Ladder step 4's arrays: control points (curves, surfaces, each Brep face's grid in turn) or vertices
+    /// (meshes, SubD control nets, point clouds), when both structures are the same; for two polylines, their
+    /// vertices whatever the counts. Closed curves list each control point once, without the repeats that close them.
+    /// </summary>
+    public static StructureArrays? Structure(GeometryBase x, GeometryBase y)
+    {
+        switch (x, y)
+        {
+            case (Curve c, Curve d):
+                using (var nc = c.ToNurbsCurve())
+                using (var nd = d.ToNurbsCurve())
+                {
+                    if (nc is null || nd is null) return null;
+                    bool polylines = nc.Degree == 1 && nd.Degree == 1;
+                    bool same = nc.Degree == nd.Degree && nc.Points.Count == nd.Points.Count && nc.IsRational == nd.IsRational
+                        && nc.IsPeriodic == nd.IsPeriodic && Same(Knots(nc), Knots(nd))
+                        && Enumerable.Range(0, nc.Points.Count).All(i => Math.Abs(nc.Points[i].Weight - nd.Points[i].Weight) < 1e-9);
+                    if (!same && !polylines) return null;
+                    var order = c.IsClosed && d.IsClosed ? PointOrder.Closed : !c.IsClosed && !d.IsClosed ? PointOrder.Open : PointOrder.Fixed;
+                    return new StructureArrays(CurvePoints(nc, order == PointOrder.Closed), CurvePoints(nd, order == PointOrder.Closed), same, polylines, order);
+                }
+            case (Mesh m, Mesh n):
+                bool sameFaces = m.Vertices.Count == n.Vertices.Count && m.Faces.Count == n.Faces.Count
+                    && Enumerable.Range(0, m.Faces.Count).All(i => m.Faces[i].Equals(n.Faces[i]));
+                return sameFaces ? new StructureArrays(Vecs(m.Vertices.ToPoint3dArray()), Vecs(n.Vertices.ToPoint3dArray()), true, false, PointOrder.Fixed) : null;
+            case (SubD s, SubD t):
+                return SubDNet(s) is var (ps, fs) && SubDNet(t) is var (pt, ft) && fs.SequenceEqual(ft) && ps.Count == pt.Count
+                    ? new StructureArrays(ps, pt, true, false, PointOrder.Fixed) : null;
+            case (PointCloud p, PointCloud q):
+                return p.Count == q.Count ? new StructureArrays(Vecs(p.GetPoints()), Vecs(q.GetPoints()), true, false, PointOrder.Fixed) : null;
+            default:
+                using (AsBrep(x, out var bx))
+                using (AsBrep(y, out var by))
+                    return bx is null || by is null ? null : FaceGrids(bx, by);
+        }
+    }
+
+    private static List<Vec3> Vecs(IEnumerable<Point3d> points) => [.. points.Select(GeometryHasher.Vec)];
+
+    private static List<Vec3> CurvePoints(NurbsCurve n, bool once)
+    {
+        var points = Enumerable.Range(0, n.Points.Count).Select(i => n.Points[i].Location).ToList();
+        int repeats = !once ? 0 : n.IsPeriodic ? n.Degree : points.Count > 1 && points[0].DistanceTo(points[^1]) <= 1e-12 * (1 + points[0].DistanceTo(Point3d.Origin)) ? 1 : 0;
+        return Vecs(points.Take(points.Count - repeats));
+    }
+
+    /// <summary>A SubD's control net points and its faces as vertex-index lists, both in vertex list order.</summary>
+    private static (List<Vec3> Points, List<int> Faces) SubDNet(SubD s)
+    {
+        var vertices = GeometryHasher.Vertices(s).ToList();
+        var index = new Dictionary<uint, int>();
+        foreach (var v in vertices) index[v.Id] = index.Count;
+        var faces = new List<int>();
+        foreach (var f in s.Faces)
+        {
+            faces.Add(-f.VertexCount);
+            for (int i = 0; i < f.VertexCount; i++) faces.Add(index[f.VertexAt(i).Id]);
+        }
+        return (Vecs(vertices.Select(v => v.ControlNetPoint)), faces);
+    }
+
+    /// <summary>Every face's underlying control grid in turn, when both Breps' faces have the same degrees, counts and knots.</summary>
+    private static StructureArrays? FaceGrids(Brep x, Brep y)
+    {
+        if (x.Faces.Count != y.Faces.Count) return null;
+        var (pa, pb) = (new List<Vec3>(), new List<Vec3>());
+        for (int f = 0; f < x.Faces.Count; f++)
+        {
+            using var u = x.Faces[f].UnderlyingSurface().ToNurbsSurface();
+            using var v = y.Faces[f].UnderlyingSurface().ToNurbsSurface();
+            if (u is null || v is null || u.Degree(0) != v.Degree(0) || u.Degree(1) != v.Degree(1) || u.IsRational != v.IsRational
+                || u.Points.CountU != v.Points.CountU || u.Points.CountV != v.Points.CountV
+                || !Same(Normalized(u.KnotsU.Count, i => u.KnotsU[i]), Normalized(v.KnotsU.Count, i => v.KnotsU[i]))
+                || !Same(Normalized(u.KnotsV.Count, i => u.KnotsV[i]), Normalized(v.KnotsV.Count, i => v.KnotsV[i])))
+                return null;
+            for (int i = 0; i < u.Points.CountU; i++)
+                for (int j = 0; j < u.Points.CountV; j++)
+                {
+                    pa.Add(GeometryHasher.Vec(u.Points.GetControlPoint(i, j).Location));
+                    pb.Add(GeometryHasher.Vec(v.Points.GetControlPoint(i, j).Location));
+                }
+        }
+        return new StructureArrays(pa, pb, true, false, PointOrder.Fixed);
     }
 }

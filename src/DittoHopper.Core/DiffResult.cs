@@ -111,9 +111,10 @@ public sealed record PropertyChange(
     ValueSource? ToSource = null);
 
 /// <summary>
-/// The geometry ladder's verdict. <see cref="Unclassified"/>: the hash differs, and the shape is neither the same
-/// (<see cref="DataOnly"/>) nor rigidly moved (<see cref="Moved"/>); it is not yet classified further (steps 4–5).
-/// <see cref="DataOnly"/> pairs are listed but never count as changes.
+/// The geometry ladder's verdict. <see cref="Unclassified"/>: the hash differs but the ladder can't say how, because
+/// there is no geometry service or the pair can't be measured (edited text, for example).
+/// <see cref="DataOnly"/> pairs are listed but never count as changes. <see cref="Edited"/> with a
+/// <see cref="GeometryChange.Rigid"/> is "moved + edited": the transform, then the points it doesn't explain.
 /// </summary>
 public enum GeometryLevel { Unclassified, Unchanged, DataOnly, Moved, Edited, Reshaped, TopologyChanged }
 
@@ -123,9 +124,12 @@ public sealed record GeometryChange
     public required Guid B { get; init; }
     public required GeometryLevel Level { get; init; }
     public string? Detail { get; init; }
+    /// <summary>Moved: the transform. Edited: the rigid part of a "moved + edited" pair, else null.</summary>
     public Xform? Rigid { get; init; }
+    /// <summary>Edited: the farthest moved point. Otherwise the shape deviation.</summary>
     public double? MaxDeviation { get; init; }
     public double? MeanDeviation { get; init; }
+    /// <summary>Edited: A's control point or vertex indices that moved (after the rigid part, if any).</summary>
     public IReadOnlyList<int>? MovedIndices { get; init; }
 }
 

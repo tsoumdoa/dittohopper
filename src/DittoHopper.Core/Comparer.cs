@@ -153,7 +153,7 @@ internal sealed class Comparer
             else if (g.Level == GeometryLevel.Moved)
                 Check(t.Placement, false, () => new PropertyChange(PropertyKind.Transform, null, null, g.Detail));
             else
-                Check(t.Shape, false, () => new PropertyChange(PropertyKind.Geometry, null, null, null));
+                Check(t.Shape, false, () => new PropertyChange(PropertyKind.Geometry, null, null, ShapeLabel(g)));
         }
         else if (t.Placement || t.Shape)
         {
@@ -179,6 +179,18 @@ internal sealed class Comparer
         return (xa is null ? xb is null : xb is not null && xa.AlmostEquals(xb, tol),
             () => new PropertyChange(PropertyKind.Transform, null, xa?.ToString(), xb?.ToString()));
     }
+
+    /// <summary>
+    /// The shape change a set groups by: the ladder level, and for a topology change what broke. Index details
+    /// and deviations stay on the object (<see cref="GeometryChange"/>), so equal kinds of edit share a set.
+    /// </summary>
+    private static string? ShapeLabel(GeometryChange g) => g.Level switch
+    {
+        GeometryLevel.Edited => g.Rigid is null ? "edited" : "moved + edited",
+        GeometryLevel.Reshaped => "reshaped",
+        GeometryLevel.TopologyChanged => "topology changed: " + g.Detail,
+        _ => null,
+    };
 
     /// <summary>
     /// Group membership through the group map. The cause is a group's removal or addition only when exactly

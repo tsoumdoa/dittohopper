@@ -2,14 +2,15 @@ using Xunit;
 
 namespace DittoHopper.Core.Tests;
 
-/// <summary>Ladder steps 2–3 through a scripted geometry service: what the Rhino adapter would answer.</summary>
+/// <summary>The geometry ladder through a scripted geometry service: what the Rhino adapter would answer.</summary>
 public class GeometryLadderTests
 {
-    /// <summary>Answers by A id: the unmoved deviation, the points, and the deviation once the fitted move is applied.</summary>
+    /// <summary>Answers by A id: the unmoved deviation, the points, the deviation once the fitted move is applied, and step 4's arrays.</summary>
     private sealed class FakeGeometry : IGeometryService
     {
         public readonly Dictionary<Guid, double> Unmoved = [], Moved = [];
         public readonly Dictionary<Guid, (Vec3[] A, Vec3[] B)> Points = [];
+        public readonly Dictionary<Guid, StructureArrays> Arrays = [];
 
         public ShapeDeviation? Deviation(Guid a, Guid b, Xform? moveA, double tolerance) =>
             (moveA is null ? Unmoved : Moved).TryGetValue(a, out var d) ? new ShapeDeviation(d, d / 2) : null;
@@ -18,6 +19,8 @@ public class GeometryLadderTests
             Points.TryGetValue(a, out var p) ? new PointCorrespondence(p.A, p.B) : null;
 
         public string? DataOnlyReason(Guid a, Guid b) => "rebuilt";
+
+        public StructureArrays? Structure(Guid a, Guid b) => Arrays.GetValueOrDefault(a);
     }
 
     private static readonly Vec3[] Corners = [new(0, 0, 0), new(100, 0, 0), new(100, 50, 0), new(0, 50, 200)];
@@ -67,7 +70,8 @@ public class GeometryLadderTests
         var (a, b, ids) = Edited(1);
         var g = new FakeGeometry();
         g.Unmoved[ids[0]] = 0.05;
-        Assert.Equal(GeometryLevel.Unclassified, Assert.Single(ModelDiff.Diff(a.Build(), b.Build(), geometry: g).Geometry).Level);
+        // Not the same shape at the default tolerance: same topology, so step 5 reports it Reshaped.
+        Assert.Equal(GeometryLevel.Reshaped, Assert.Single(ModelDiff.Diff(a.Build(), b.Build(), geometry: g).Geometry).Level);
         var loose = new DiffSettings { ShapeTolerance = 0.1 };
         Assert.Equal(GeometryLevel.DataOnly, Assert.Single(ModelDiff.Diff(a.Build(), b.Build(), loose, g).Geometry).Level);
         Assert.Throws<ArgumentOutOfRangeException>(() => ModelDiff.Diff(a.Build(), b.Build(), new DiffSettings { ShapeTolerance = 0 }));
@@ -188,5 +192,105 @@ public class GeometryLadderTests
         var withService = ModelDiff.Diff(a.Build(), b.Build(), geometry: new FakeGeometry());
         Assert.Equal("rebuilt", Assert.Single(withService.Geometry).Detail);
         Assert.Empty(withService.ChangeSets);
+    }
+
+    private static Vec3[] Hexagon() => [.. Enumerable.Range(0, 6).Select(i => new Vec3(100 * Math.Cos(i * Math.PI / 3), 100 * Math.Sin(i * Math.PI / 3), i * 7))];
+
+    private static Vec3[] With(Vec3[] points, int index, Vec3 offset)
+    {
+        var copy = (Vec3[])points.Clone();
+        copy[index] += offset;
+        return copy;
+    }
+
+    [Fact]
+    public void Step4_SameStructureListsWhichPointsMovedAndHowFar()
+    {
+        var (a, b, ids) = Edited(1);
+        var g = new FakeGeometry();
+        g.Arrays[ids[0]] = new StructureArrays(Corners, With(Corners, 2, new Vec3(0, 0, 50)), true, false, PointOrder.Fixed);
+
+        var r = ModelDiff.Diff(a.Build(), b.Build(), geometry: g);
+        var change = Assert.Single(r.Geometry);
+        Assert.Equal((GeometryLevel.Edited, "1 of 4 control points moved: #2 by 50 mm", 50.0), (change.Level, change.Detail, change.MaxDeviation));
+        Assert.Equal([2], change.MovedIndices);
+        Assert.Null(change.Rigid);
+        Assert.Equal(new PropertyChange(PropertyKind.Geometry, null, null, "edited"), Assert.Single(r.ChangeSets).Change);
+    }
+
+    [Fact]
+    public void Step4_AMovedSeamAndAFlipAreUndoneBeforeComparingIndices()
+    {
+        var (a, b, ids) = Edited(1);
+        var ring = Hexagon();
+        var edited = With(ring, 3, new Vec3(0, 0, 5));
+        // Stored starting two points later and running the other way.
+        var stored = Enumerable.Range(0, 6).Select(j => edited[(j - 2 + 6) % 6]).Reverse().ToArray();
+        var g = new FakeGeometry();
+        g.Arrays[ids[0]] = new StructureArrays(ring, stored, true, false, PointOrder.Closed);
+
+        var change = Assert.Single(ModelDiff.Diff(a.Build(), b.Build(), geometry: g).Geometry);
+        Assert.Equal("seam moved, direction flipped; 1 of 6 control points moved: #3 by 5 mm", change.Detail);
+        Assert.Equal([3], change.MovedIndices);
+    }
+
+    [Fact]
+    public void Step4_MovedAndEdited_TheRigidFitComesFirst()
+    {
+        var (a, b, ids) = Edited(1);
+        var ring = Hexagon();
+        var moved = With([.. ring.Select(p => p + new Vec3(120, 0, 0))], 3, new Vec3(0, 0, 30));
+        var g = new FakeGeometry();
+        g.Arrays[ids[0]] = new StructureArrays(ring, moved, true, false, PointOrder.Fixed);
+
+        var r = ModelDiff.Diff(a.Build(), b.Build(), geometry: g);
+        var change = Assert.Single(r.Geometry);
+        Assert.Equal((GeometryLevel.Edited, "moved 120 mm in X, then 1 of 6 control points moved: #3 by 30 mm"), (change.Level, change.Detail));
+        Assert.True(change.Rigid!.AlmostEquals(Xform.Translation(120, 0, 0), 1e-9));
+        Assert.Equal([3], change.MovedIndices);
+        Assert.Equal("moved + edited", Assert.Single(r.ChangeSets).Change!.To);
+    }
+
+    [Fact]
+    public void Step4_PolylinesWithDifferentVertexCountsGetASequenceDiff()
+    {
+        var (a, b, ids) = Edited(1);
+        Vec3[] before = [new(0, 0, 0), new(100, 0, 0), new(200, 0, 0), new(300, 0, 0), new(400, 0, 0)];
+        Vec3[] after = [new(0, 0, 0), new(100, 0, 0), new(150, 50, 0), new(200, 0, 0), new(300, 20, 0), new(400, 0, 0)];
+        var g = new FakeGeometry();
+        g.Arrays[ids[0]] = new StructureArrays(before, after, false, true, PointOrder.Open);
+
+        var change = Assert.Single(ModelDiff.Diff(a.Build(), b.Build(), geometry: g).Geometry);
+        Assert.Equal((GeometryLevel.Edited, "vertices: 1 inserted, 1 moved (#3 by 20 mm), 4 untouched", 20.0),
+            (change.Level, change.Detail, change.MaxDeviation));
+        Assert.Equal([3], change.MovedIndices);
+    }
+
+    [Fact]
+    public void Step5_TheSameTopologyIsReshapedWithItsDeviation()
+    {
+        var (a, b, ids) = Edited(1);
+        var g = new FakeGeometry();
+        g.Unmoved[ids[0]] = 12.5;
+
+        var r = ModelDiff.Diff(a.Build(), b.Build(), geometry: g);
+        var change = Assert.Single(r.Geometry);
+        Assert.Equal((GeometryLevel.Reshaped, "deviation max 12.5 mm, mean 6.25 mm", 12.5, 6.25),
+            (change.Level, change.Detail, change.MaxDeviation, change.MeanDeviation));
+        Assert.Equal("reshaped", Assert.Single(r.ChangeSets).Change!.To);
+    }
+
+    [Fact]
+    public void Step5_OtherwiseTheTopologyChangedAndSaysWhatBroke()
+    {
+        var a = new SnapshotBuilder();
+        var box = a.Object(a.Layer("Solids"), o => o with { Kind = ObjectKind.Brep, Geometry = o.Geometry with { Closed = true, Faces = 6 } });
+        var b = a.Clone();
+        b.Edit(box, o => o with { Geometry = o.Geometry with { Hash = 1, Closed = false, Faces = 5, BoundaryLoops = 1 } });
+
+        var r = ModelDiff.Diff(a.Build(), b.Build(), geometry: new FakeGeometry());
+        var change = Assert.Single(r.Geometry);
+        Assert.Equal((GeometryLevel.TopologyChanged, "solid became open, face removed or merged"), (change.Level, change.Detail));
+        Assert.Equal("topology changed: solid became open, face removed or merged", Assert.Single(r.ChangeSets).Change!.To);
     }
 }

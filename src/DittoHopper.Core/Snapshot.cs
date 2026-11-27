@@ -121,6 +121,15 @@ public enum ObjectKind
     InstanceReference, Annotation, Hatch, TextDot, Light, Other,
 }
 
+public static class ObjectKinds
+{
+    /// <summary>
+    /// The kind family matching compares within: Extrusion, Surface and Brep are one family (the same solid is
+    /// stored either way), so a converted object keeps its pair. Every other kind is its own family.
+    /// </summary>
+    public static ObjectKind Family(ObjectKind kind) => kind is ObjectKind.Extrusion or ObjectKind.Surface ? ObjectKind.Brep : kind;
+}
+
 /// <summary>One model-space object.</summary>
 public sealed record ObjectRecord
 {
@@ -164,4 +173,16 @@ public sealed record GeometrySignature
     public double Volume { get; init; }
     public Vec3 Centroid { get; init; }
     public BBox BBox { get; init; }
+
+    // The topology summary, position-free and measured once: the adapter's same-shape gate, matching pass 4 and
+    // ladder step 5 all compare it. Zero and false for points, text and other types without topology.
+
+    /// <summary>A closed curve or mesh, or a solid Brep, extrusion or SubD.</summary>
+    public bool Closed { get; init; }
+    /// <summary>Faces of a Brep (an extrusion as its Brep), mesh or SubD.</summary>
+    public int Faces { get; init; }
+    /// <summary>Boundary loops: the naked edges joined into closed or open runs.</summary>
+    public int BoundaryLoops { get; init; }
+    /// <summary>Total length of the naked edges.</summary>
+    public double BoundaryLength { get; init; }
 }

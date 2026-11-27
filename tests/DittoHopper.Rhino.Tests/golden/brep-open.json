@@ -63,15 +63,17 @@
     {
       "a": "00000000-0000-0000-0000-000000000002",
       "b": "00000000-0000-0000-0000-000000000002",
-      "level": "unclassified"
+      "level": "topologyChanged",
+      "detail": "solid became open, face removed or merged"
     }
   ],
   "changeSets": [
     {
-      "id": "cs-cd17d0cb07051f75",
+      "id": "cs-1ac581104201f8bc",
       "kind": "modified",
       "change": {
-        "property": "geometry"
+        "property": "geometry",
+        "to": "topology changed: solid became open, face removed or merged"
       },
       "objects": [
         {

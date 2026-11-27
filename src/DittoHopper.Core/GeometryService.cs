@@ -11,7 +11,8 @@ public interface IGeometryService
     /// <summary>
     /// The two-sided distance between A's shape, moved by <paramref name="moveA"/> when given, and B's; null when
     /// the pair can't be measured. Once it is known to exceed <paramref name="tolerance"/> an implementation may
-    /// stop, so a Max above the tolerance is only a lower bound.
+    /// stop, so a Max above the tolerance is only a lower bound. Ladder step 5 passes the pair's whole size to get
+    /// the full deviation.
     /// </summary>
     ShapeDeviation? Deviation(Guid a, Guid b, Xform? moveA, double tolerance);
 
@@ -20,6 +21,14 @@ public interface IGeometryService
 
     /// <summary>Why a same-shape pair's data differs, best effort: "rebuilt", "direction flipped", "seam moved" and so on.</summary>
     string? DataOnlyReason(Guid a, Guid b);
+
+    /// <summary>
+    /// Ladder step 4's arrays, fetched only for the pairs that reach it, so they never sit in a snapshot: control
+    /// points of curves and surfaces (each Brep face's grid in turn), or vertices of meshes, SubD control nets and
+    /// point clouds. Null when the structures differ (type, degrees, counts, knots, weights, mesh faces), unless
+    /// both are polylines, whose vertices are then diffed as sequences.
+    /// </summary>
+    StructureArrays? Structure(Guid a, Guid b);
 }
 
 public readonly record struct ShapeDeviation(double Max, double? Mean = null);
@@ -27,10 +36,22 @@ public readonly record struct ShapeDeviation(double Max, double? Mean = null);
 public sealed record PointCorrespondence(IReadOnlyList<Vec3> A, IReadOnlyList<Vec3> B);
 
 /// <summary>
-/// Geometry ladder steps 2 and 3, for a matched pair whose hash differs (step 1). Step 2: the same shape within
-/// shape tolerance means Data-only. Step 3: a rigid fit of the corresponding points, accepted when both the
-/// fit's residual and the moved shape's deviation are within shape tolerance, means Moved. Anything else stays
-/// Unclassified for steps 4–5.
+/// How the two arrays' indices may relate. <see cref="Open"/>: an open curve, which may run the other way.
+/// <see cref="Closed"/>: a closed curve, which may also start anywhere; each array then holds every control
+/// point once, without the repeats that close it.
+/// </summary>
+public enum PointOrder { Fixed, Open, Closed }
+
+/// <param name="SameStructure">Same type, degrees, counts, knots and weights (meshes: the same faces), so the points compare index by index.</param>
+/// <param name="Polylines">Both are degree-1 curves: their control points are their vertices.</param>
+public sealed record StructureArrays(IReadOnlyList<Vec3> A, IReadOnlyList<Vec3> B, bool SameStructure, bool Polylines, PointOrder Order);
+
+/// <summary>
+/// The geometry ladder, for a matched pair whose hash differs (step 1). Step 2: the same shape within shape
+/// tolerance means Data-only. Step 3: a rigid fit of the corresponding points, accepted when both the fit's
+/// residual and the moved shape's deviation are within shape tolerance, means Moved. Steps 4 (Edited) and 5
+/// (Reshaped or Topology changed) are in <see cref="GeometryEdits"/>. A pair the service can't measure stays
+/// Unclassified.
 /// </summary>
 internal static class GeometryLadder
 {
@@ -71,7 +92,10 @@ internal static class GeometryLadder
                 MeanDeviation = moved.Mean is double mean ? Round(mean, tol) : null,
             };
         }
-        return change;
+
+        if (service.Structure(a.Id, b.Id) is { } arrays && GeometryEdits.Edited(ctx, a, arrays, change) is { } edited)
+            return edited;
+        return GeometryEdits.Reshaped(ctx, service, a, b, change);
     }
 
     private static bool BoxesWithin(BBox a, BBox b, double scale, double tol)
@@ -81,14 +105,14 @@ internal static class GeometryLadder
     }
 
     /// <summary>A fitted transform without float noise: rotation entries to 1e-12, translation to a millionth of the tolerance.</summary>
-    private static Xform Round(Xform x, double tol)
+    public static Xform Round(Xform x, double tol)
     {
         int decimals = Math.Clamp((int)Math.Ceiling(-Math.Log10(tol)) + 6, 0, 15);
         return new Xform([.. x.Values.Select((v, i) => Math.Round(v, i is 3 or 7 or 11 ? decimals : 12) + 0.0)]);
     }
 
     /// <summary>Deviations to a thousandth of the tolerance: finer digits are sampling noise and would churn golden files.</summary>
-    private static double Round(double v, double tol)
+    public static double Round(double v, double tol)
     {
         int decimals = Math.Clamp((int)Math.Ceiling(-Math.Log10(tol)) + 3, 0, 15);
         return Math.Round(v, decimals);

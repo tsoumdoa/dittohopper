@@ -267,9 +267,12 @@ public sealed class FixtureTests(RhinoHost host, ITestOutputHelper output)
                 s.Points.SetPoint(1, 1, s.Points.GetControlPoint(1, 1).Location + new Vector3d(0, 0, 50));
                 Model.Replace(b, "surface", s);
             }),
-            1, "Hash differs; Edited with CV index comes in M3");
-        Assert.All(run.Result.Geometry, g => Assert.Equal(GeometryLevel.Unclassified, g.Level));
-        Assert.Equal(2, run.Result.Geometry.Count);
+            1, "Edited, CV index and distance");
+        Assert.Equal(
+            [(GeometryLevel.Edited, "1 of 16 control points moved: #5 by 50 mm"), (GeometryLevel.Edited, "1 of 7 control points moved: #2 by 50 mm")],
+            run.Result.Geometry.Select(g => (g.Level, g.Detail!)).OrderBy(g => g.Item2, StringComparer.Ordinal));
+        Assert.All(run.Result.Geometry, g => Assert.Equal(50, g.MaxDeviation));
+        Assert.Equal("edited", Assert.Single(run.Result.ChangeSets).Change!.To);
     });
 
     [RhinoFact]
@@ -315,8 +318,9 @@ public sealed class FixtureTests(RhinoHost host, ITestOutputHelper output)
                 Assert.False(open.IsSolid);
                 Model.Replace(b, "box", open);
             }),
-            1, "Hash differs; Topology changed comes in M3");
-        Assert.Equal(GeometryLevel.Unclassified, Assert.Single(run.Result.Geometry).Level);
+            1, "Topology changed: solid became open");
+        var g = Assert.Single(run.Result.Geometry);
+        Assert.Equal((GeometryLevel.TopologyChanged, "solid became open, face removed or merged"), (g.Level, g.Detail));
     });
 
     /// <summary>Inner (a box) is nested in Outer (Inner + a line). Three Outer and two Inner instances, ids kept.</summary>

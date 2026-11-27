@@ -70,20 +70,31 @@
     {
       "a": "00000000-0000-0000-0000-000000000002",
       "b": "00000000-0000-0000-0000-000000000002",
-      "level": "unclassified"
+      "level": "edited",
+      "detail": "1 of 7 control points moved: #2 by 50 mm",
+      "maxDeviation": 50,
+      "movedIndices": [
+        2
+      ]
     },
     {
       "a": "00000000-0000-0000-0000-000000000003",
       "b": "00000000-0000-0000-0000-000000000003",
-      "level": "unclassified"
+      "level": "edited",
+      "detail": "1 of 16 control points moved: #5 by 50 mm",
+      "maxDeviation": 50,
+      "movedIndices": [
+        5
+      ]
     }
   ],
   "changeSets": [
     {
-      "id": "cs-cd17d0cb07051f75",
+      "id": "cs-3f36324535749f59",
       "kind": "modified",
       "change": {
-        "property": "geometry"
+        "property": "geometry",
+        "to": "edited"
       },
       "objects": [
         {

@@ -9,7 +9,7 @@ namespace DittoHopper.Core;
 /// </summary>
 public static class ModelDiff
 {
-    /// <param name="geometry">Answers deviation and point questions for geometry ladder steps 2–3. Without it,
+    /// <param name="geometry">Answers deviation and point questions for geometry ladder steps 2–5. Without it,
     /// every pair whose geometry hash differs is <see cref="GeometryLevel.Unclassified"/>.</param>
     public static DiffResult Diff(ModelSnapshot a, ModelSnapshot b, DiffSettings? settings = null, IGeometryService? geometry = null)
     {

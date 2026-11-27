@@ -121,5 +121,7 @@ internal static class Fixture
         public PointCorrespondence? CorrespondingPoints(Guid a, Guid b) => inner.CorrespondingPoints(original[a], original[b]);
 
         public string? DataOnlyReason(Guid a, Guid b) => inner.DataOnlyReason(original[a], original[b]);
+
+        public StructureArrays? Structure(Guid a, Guid b) => inner.Structure(original[a], original[b]);
     }
 }

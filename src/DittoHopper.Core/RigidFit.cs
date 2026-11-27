@@ -37,6 +37,39 @@ public static class RigidFit
     }
 
     /// <summary>
+    /// The rigid motion (translation, else rotation; mirrors aren't tried) that maps most points: a least-squares
+    /// fit that drops the worst tenth of the points it still uses (at least one) until those fit within
+    /// <paramref name="tolerance"/>. Null when that would leave fewer than three points or no majority. Inliers
+    /// counts every point the result maps within tolerance.
+    /// </summary>
+    public static (RigidMotion Motion, int Inliers)? FitMajority(IReadOnlyList<Vec3> from, IReadOnlyList<Vec3> to, double tolerance)
+    {
+        int n = from.Count;
+        if (n != to.Count)
+            return null;
+        var keep = Enumerable.Range(0, n).ToList();
+        while (keep.Count >= Math.Max(3, n / 2 + 1))
+        {
+            var f = keep.Select(i => from[i]).ToList();
+            var t = keep.Select(i => to[i]).ToList();
+            Vec3 ca = Centroid(f), cb = Centroid(t);
+            var motion = Motion(Identity3, ca, cb, f, t, mirrored: false);
+            if (motion.MaxResidual > tolerance)
+                motion = Motion(Rotation(f, ca, t, cb, mirror: false), ca, cb, f, t, mirrored: false);
+            if (motion.MaxResidual <= tolerance)
+                return (motion, Enumerable.Range(0, n).Count(i => Vec3.Distance(motion.Transform.Apply(from[i]), to[i]) <= tolerance));
+            int drop = Math.Max(1, keep.Count / 10);
+            var worst = keep.OrderByDescending(i => Vec3.Distance(motion.Transform.Apply(from[i]), to[i])).ThenBy(i => i).Take(drop).ToHashSet();
+            keep.RemoveAll(worst.Contains);
+        }
+        return null;
+    }
+
+    /// <summary>A length in words, e.g. "50 mm", rounded to the decimals <paramref name="tolerance"/> resolves.</summary>
+    public static string Length(double v, UnitSystem units, double tolerance) =>
+        Number(v, Math.Clamp((int)Math.Ceiling(-Math.Log10(tolerance)), 0, 6)) + " " + UnitLabel(units);
+
+    /// <summary>
     /// A human description of a transform, e.g. "moved 120 mm in X", "rotated 90° about Z through (100, 0, 0)" or
     /// "mirrored across the plane X = 50 mm". Lengths are rounded to the decimals <paramref name="tolerance"/>
     /// resolves, so equal motions describe equally. A non-rigid transform is listed as its rounded matrix.
