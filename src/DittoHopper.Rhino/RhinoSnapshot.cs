@@ -21,13 +21,16 @@ public sealed class RhinoSnapshot : IDisposable
     internal readonly record struct Entry(GeometryBase Geometry, GeometrySignature Signature);
 
     private readonly IReadOnlyDictionary<Guid, Entry> geometry;
+    /// <summary>Set on a <see cref="WithModel"/> view: the snapshot that owns the shared geometry.</summary>
+    private readonly RhinoSnapshot? owner;
     private bool disposed;
 
-    internal RhinoSnapshot(ModelSnapshot model, IReadOnlyDictionary<Guid, Entry> geometry, HashNames names)
+    internal RhinoSnapshot(ModelSnapshot model, IReadOnlyDictionary<Guid, Entry> geometry, HashNames names, RhinoSnapshot? owner = null)
     {
         Model = model;
         this.geometry = geometry;
         Names = names;
+        this.owner = owner;
     }
 
     public ModelSnapshot Model { get; }
@@ -37,7 +40,7 @@ public sealed class RhinoSnapshot : IDisposable
     {
         get
         {
-            ObjectDisposedException.ThrowIf(disposed, this);
+            ObjectDisposedException.ThrowIf((owner ?? this).disposed, this);
             return geometry;
         }
     }
@@ -45,12 +48,22 @@ public sealed class RhinoSnapshot : IDisposable
     /// <summary>Releases the geometry copies. The model data stays readable.</summary>
     public void Dispose()
     {
-        if (disposed) return;
+        if (owner is not null || disposed) return;
         disposed = true;
         foreach (var e in geometry.Values) e.Geometry.Dispose();
     }
 
     internal HashNames Names { get; }
+
+    /// <summary>The snapshot's own copy of a top-level object's geometry, or null. Shared: duplicate it before changing it.</summary>
+    public GeometryBase? GeometryOf(Guid id) => Geometry.TryGetValue(id, out var e) ? e.Geometry : null;
+
+    /// <summary>
+    /// A view of this snapshot with a narrowed model, such as one filtered to some layers. <paramref name="model"/>
+    /// must hold a subset of this snapshot's records. The view shares the geometry and owns none of it: disposing
+    /// the view does nothing, and it is unusable once this snapshot is disposed.
+    /// </summary>
+    public RhinoSnapshot WithModel(ModelSnapshot model) => new(model, Geometry, Names, owner ?? this);
 
     /// <summary>Reads a .3dm file without opening it in Rhino. The source label is the file name.</summary>
     public static RhinoSnapshot FromFile(string path)
