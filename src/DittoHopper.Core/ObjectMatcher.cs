@@ -2,7 +2,7 @@ namespace DittoHopper.Core;
 
 /// <summary>
 /// The matching cascade, cheapest and most certain first. Each pass sees only objects no earlier pass claimed.
-/// Within a pass, ties (several candidates for one key) break the same way: same GUID and kind, same mapped
+/// Within a pass, ties (several candidates for one key) break the same way: same GUID and kind, same kind, same mapped
 /// layer, nearest centroid (to tolerance), most equal own attributes, then GUID order.
 /// </summary>
 internal sealed class ObjectMatcher
@@ -77,8 +77,10 @@ internal sealed class ObjectMatcher
 
     /// <summary>
     /// Pairs candidates that all share one key, best-ranked pair first: same GUID and kind (a copy keeps its
-    /// original's key but not its GUID), same mapped layer, nearest centroid, most equal own attributes, GUID
+    /// original's key but not its GUID), same kind, same mapped layer, nearest centroid, most equal own attributes, GUID
     /// order. Distances are counted in tolerance steps, so coincident candidates tie and attributes decide.
+    /// The best pairs are claimed greedily; this never forces a weaker pairing just to pair more objects,
+    /// because an honest added + removed is better than a wrong pair.
     /// </summary>
     private IEnumerable<(ObjectRecord A, ObjectRecord B)> BreakTies(List<ObjectRecord> a, List<ObjectRecord> b,
         Func<ObjectRecord, ObjectRecord, bool> allowed)
@@ -90,6 +92,7 @@ internal sealed class ObjectMatcher
             from y in b
             where allowed(x, y)
             orderby x.Id == y.Id && x.Kind == y.Kind ? 0 : 1,
+                x.Kind == y.Kind ? 0 : 1,
                 ctx.Layers.Map(x.LayerId) == y.LayerId ? 0 : 1,
                 DistanceSteps(x, y),
                 -Agreement(x, y),

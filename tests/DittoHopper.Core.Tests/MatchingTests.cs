@@ -203,6 +203,23 @@ public class MatchingTests
     }
 
     [Fact]
+    public void Pass1_SameKindBeatsCentroidForCopiedTags()
+    {
+        var a = new SnapshotBuilder();
+        var layer = a.Layer("L");
+        var curve = a.Object(layer, o => o with { Kind = ObjectKind.Curve, UserText = Uid("t") }, at: new Vec3(0, 0, 0));
+        var brep = a.Object(layer, o => o with { Kind = ObjectKind.Brep, UserText = Uid("t") }, at: new Vec3(1000, 0, 0));
+        var b = a.Clone();
+        // Re-baked, and the two swapped places.
+        var brep2 = b.Rebake(brep);
+        var curve2 = b.Rebake(curve);
+        b.Edit(curve2, o => o with { Geometry = o.Geometry with { Hash = 1, Centroid = new Vec3(1000, 0, 0) } });
+        b.Edit(brep2, o => o with { Geometry = o.Geometry with { Hash = 2, Centroid = new Vec3(0, 0, 0) } });
+
+        AssertPairs(ModelDiff.Diff(a.Build(), b.Build()), MatchedBy.StableKey, (curve, curve2), (brep, brep2));
+    }
+
+    [Fact]
     public void GridsDifferingBeyondFloatNoiseAreNotComparable()
     {
         var (a, b) = Fixtures.GhRebake();
