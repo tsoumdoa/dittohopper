@@ -48,7 +48,7 @@ public sealed class DiffFilterComponent : DittoComponent
     protected override void RegisterOutputParams(GH_OutputParamManager p)
     {
         p.AddGeometryParameter("Objects", "Objects",
-            "The matching objects in model A's units: removed ones as they were in A, the rest as they are in B. A block instance is its insertion point.",
+            "The matching objects in the Rhino document's units (A's without one): removed ones as they were in A, the rest as they are in B. A block instance is its insertion point.",
             GH_ParamAccess.list);
         p.AddTextParameter("Info", "Info",
             "One line per object: what changed, its layer, how many properties did not change, and how it was matched (GUID, key, hash…).",
@@ -73,11 +73,13 @@ public sealed class DiffFilterComponent : DittoComponent
         if (unknown.Count > 0)
             AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"Unknown kind {string.Join(", ", unknown)}. Use: {string.Join(", ", Kinds)}.");
 
-        var rows = Select(run, kinds, layers);
-        double scale = run.BToA;
+        // Only invalid kinds given: nothing matches, rather than everything.
+        var rows = kinds.Count == 0 && unknown.Count > 0 ? [] : Select(run, kinds, layers);
+        var units = Geometry.OutputUnits(run, OnPingDocument()?.RhinoDocument ?? global::Rhino.RhinoDoc.ActiveDoc);
+        if (units.Remark is { } remark) AddRuntimeMessage(GH_RuntimeMessageLevel.Remark, remark);
         da.SetDataList(0, rows.Select(r => r.Pair.B is Guid b
-            ? Geometry.ToGoo(run.B.GeometryOf(b), scale)
-            : Geometry.ToGoo(run.A.GeometryOf(r.Pair.A!.Value))));
+            ? Geometry.ToGoo(run.B.GeometryOf(b), units.B)
+            : Geometry.ToGoo(run.A.GeometryOf(r.Pair.A!.Value), units.A)));
         da.SetDataList(1, rows.Select(r => r.Info));
         Message = Describe.Plural(rows.Count, "object");
     }

@@ -33,5 +33,12 @@ public sealed class LayerPatterns
         return hit;
     }
 
+    /// <summary>The patterns that match none of <paramref name="layerPaths"/>: typos, or layers that don't exist.</summary>
+    public IReadOnlyList<string> Unmatched(IEnumerable<string> layerPaths)
+    {
+        var paths = layerPaths.ToList();
+        return [.. Text.Where(p => !paths.Any(path => LayerGlob.IsMatch(p, path)))];
+    }
+
     public override string ToString() => MatchesAll ? "all layers" : string.Join(", ", Text);
 }

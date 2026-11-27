@@ -1,6 +1,7 @@
 using System.Drawing;
 using DittoHopper.Rhino.Tests;
 using Grasshopper.Kernel;
+using Grasshopper.Kernel.Data;
 using Grasshopper.Kernel.Types;
 using Rhino;
 using Rhino.DocObjects;
@@ -146,6 +147,17 @@ public sealed class ComponentTests(RhinoHost host, ITestOutputHelper output)
         SetGate(d, "Strcture::*");
         Assert.False(d.Pass(d.Gate));
         Assert.StartsWith("No layer in A or B matches Strcture::*", Assert.Single(Gh.Texts(d.Gate, 1)));
+        Gh.Set(d.Gate.Params.Input[1], new GH_String("Walls"), new GH_String("Fascade"));
+        Gh.Solve(d.Doc);
+        Assert.False(d.Pass(d.Gate));
+        Assert.StartsWith("No layer in A or B matches Fascade,", Assert.Single(Gh.Texts(d.Gate, 1)));
+
+        Gh.Set(d.Filter.Params.Input[1], new GH_String("bogus"));
+        Gh.Solve(d.Doc);
+        Assert.Empty(Gh.Out(d.Filter, 0));
+        Assert.Contains("Unknown kind bogus", Gh.Errors(d.Filter));
+        Gh.Set(d.Filter.Params.Input[1], new GH_String("moved"));
+        Gh.Solve(d.Doc);
 
         // Scope: what I meant to change. Nothing outside Walls changed.
         var settings = Gh.Add<DiffSettingsComponent>(d.Doc);
@@ -223,10 +235,12 @@ public sealed class ComponentTests(RhinoHost host, ITestOutputHelper output)
 
         Assert.Equal("+0 −0 ~1 · 0 events", d.Diff.Message);
         var wall = ((GH_Brep)Assert.Single(Gh.Out(d.Diff, 2))).Value.GetBoundingBox(true);
-        Assert.Equal(500, wall.Min.X, 3); // B's metres, in A's millimetres
-        Assert.Equal(4500, wall.Max.X, 3);
+        Assert.Equal(0.5, wall.Min.X, 6); // in the document's metres, as the preview draws it
+        Assert.Equal(4.5, wall.Max.X, 6);
+        Assert.Contains(d.Diff.RuntimeMessages(GH_RuntimeMessageLevel.Remark),
+            m => m.StartsWith("Geometry is in the Rhino document's units (Meters)", StringComparison.Ordinal));
         var filtered = ((GH_Brep)Assert.Single(Gh.Out(d.Filter, 0))).Value.GetBoundingBox(true);
-        Assert.Equal(500, filtered.Min.X, 3);
+        Assert.Equal(0.5, filtered.Min.X, 6);
 
         // The preview draws A and B in the document's units, on top of each other.
         double toDoc = MillimetresToDoc();
@@ -345,31 +359,46 @@ public sealed class ComponentTests(RhinoHost host, ITestOutputHelper output)
             using var doc = new GH_Document { Enabled = true };
             var snap = Gh.Add<SnapshotComponent>(doc);
             var stamp = Gh.Add<StampIdsComponent>(doc);
-            Gh.Set<IGH_Goo>(stamp.Params.Input[0], new GH_Guid(first), new GH_Guid(second));
-            Gh.Set(stamp.Params.Input[2], new GH_Boolean(true)); // saved as True: opening must not write
+            Gh.Set(stamp.Params.Input[2], new GH_Boolean(true)); // saved as True, with nothing connected yet
             Gh.Solve(doc);
 
             var snapshot = (SnapshotGoo)Assert.Single(Gh.Out(snap, 0));
             Assert.Equal(4, snapshot.Value.Model.Objects.Count);
             Assert.Equal("Live", snap.Message);
+            Assert.Equal("Not run", stamp.Message);
+
+            // Connecting objects while Run stays True is no press.
+            Gh.Set<IGH_Goo>(stamp.Params.Input[0], new GH_Guid(first), new GH_Guid(second));
+            Gh.Solve(doc);
             Assert.Null(rhino.Objects.FindId(first).Attributes.GetUserString("diff:uid"));
             Assert.Equal("Not run", stamp.Message);
             Assert.Contains("2 objects in this document share a diff:uid", Gh.Errors(stamp));
 
-            // Release, then press: one write.
+            // Release, then press with objects in two branches: one solution stamps both.
             Gh.Set(stamp.Params.Input[2], new GH_Boolean(false));
+            var objects = (GH_PersistentParam<IGH_Goo>)stamp.Params.Input[0];
+            objects.PersistentData.Clear();
+            objects.PersistentData.Append(new GH_Guid(first), new GH_Path(0));
+            objects.PersistentData.Append(new GH_Guid(second), new GH_Path(0));
+            objects.PersistentData.Append(new GH_Guid(third), new GH_Path(1));
+            objects.ExpireSolution(false);
             Gh.Solve(doc);
             Gh.Set(stamp.Params.Input[2], new GH_Boolean(true));
             Gh.Solve(doc);
             Assert.True(Guid.TryParse(rhino.Objects.FindId(first).Attributes.GetUserString("diff:uid"), out _));
+            Assert.True(Guid.TryParse(rhino.Objects.FindId(third).Attributes.GetUserString("diff:uid"), out _));
             Assert.Equal("already", rhino.Objects.FindId(second).Attributes.GetUserString("diff:uid"));
-            Assert.Equal("Stamped 1", stamp.Message);
-            Assert.Equal(2, Gh.Out(stamp, 0).Count);
+            Assert.Equal("Stamped 2", stamp.Message);
+            Assert.Equal(2, stamp.Params.Output[0].VolatileData.PathCount);
+            // "Stamped 2" from one solution: both branches went through one Stamp call, so one undo record.
+            // (A headless document can't undo, so the record itself is checked in Rhino.)
 
             // Still True: connecting another object or recomputing writes nothing.
-            Gh.Set<IGH_Goo>(stamp.Params.Input[0], new GH_Guid(first), new GH_Guid(second), new GH_Guid(third));
+            var fourth = rhino.Objects.AddPoint(new Point3d(4, 0, 0));
+            objects.PersistentData.Append(new GH_Guid(fourth), new GH_Path(1));
+            objects.ExpireSolution(false);
             Gh.Solve(doc);
-            Assert.Null(rhino.Objects.FindId(third).Attributes.GetUserString("diff:uid"));
+            Assert.Null(rhino.Objects.FindId(fourth).Attributes.GetUserString("diff:uid"));
 
             var saved = Gh.Add<SnapshotComponent>(doc);
             Gh.Set(saved.Params.Input[2], new GH_Boolean(true));

@@ -209,5 +209,5 @@ public static class Describe
 
     public static string Plural(int n, string noun, string? plural = null) => $"{Count(n)} {(n == 1 ? noun : plural ?? noun + "s")}";
 
-    private static string Number(double v) => v.ToString("0.######", Inv);
+    private static string Number(double v) => v.ToString("G4", Inv);
 }

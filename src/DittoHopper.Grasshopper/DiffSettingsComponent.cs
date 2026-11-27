@@ -139,7 +139,7 @@ public static class Vocabulary
     public static string Describe(DiffSettings s)
     {
         var ignored = Properties.Where(p => !p.Get(s.Toggles)).Select(p => p.Name).ToList();
-        string tol = s.ShapeTolerance is double t ? t.ToString("0.######", CultureInfo.InvariantCulture) : "auto";
+        string tol = s.ShapeTolerance is double t ? t.ToString("G4", CultureInfo.InvariantCulture) : "auto";
         return $"Key {s.StableKey} · Tolerance {tol} · Ignoring {(ignored.Count == 0 ? "nothing" : string.Join(", ", ignored))}" +
             (s.ScopeGlob is { } scope ? $" · Scope {scope}" : "");
     }

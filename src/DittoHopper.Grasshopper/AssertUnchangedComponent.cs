@@ -9,8 +9,9 @@ public sealed class AssertUnchangedComponent : DittoComponent
     public AssertUnchangedComponent()
         : base("Assert Unchanged", "Assert",
             "A QA gate: Pass is True only when nothing on the given layers changed between A and B. Why lists every change that " +
-            "failed it. A pattern that matches no layer fails, so a typo can't pass. Rebuilt geometry with the same shape " +
-            "(Data-only) never fails it.",
+            "failed it. Every pattern must match a layer in A or B, so a typo fails. A fuzzy pairing that needs review on " +
+            "those layers fails it; rebuilt geometry with the same shape (Data-only) never does. It sees only what the " +
+            "Snapshots captured: a Layers filter on Snapshot hides the other layers from the gate.",
             ReviewPanel)
     { }
 
@@ -45,21 +46,22 @@ public sealed class AssertUnchangedComponent : DittoComponent
         var glob = new LayerPatterns(Texts(da, 1));
 
         var (pass, why) = Check(run, glob);
-        if (!glob.MatchesAll && !MatchesAnyLayer(run, glob))
-            AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"No layer in A or B matches {glob}.");
+        if (Unmatched(run, glob) is { Count: > 0 } unmatched)
+            AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"No layer in A or B matches {string.Join(", ", unmatched)}.");
         da.SetData(0, pass);
         da.SetDataList(1, why);
         Message = pass ? "Pass" : "Fail";
     }
 
-    private static bool MatchesAnyLayer(DiffRun run, LayerPatterns glob) =>
-        run.LayerPathsA.Values.Concat(run.LayerPathsB.Values).Any(glob.Matches);
+    private static IReadOnlyList<string> Unmatched(DiffRun run, LayerPatterns glob) =>
+        glob.Unmatched(run.LayerPathsA.Values.Concat(run.LayerPathsB.Values));
 
     /// <summary>The gate: every change set and table event that touches a matching layer fails it, one line each.</summary>
     public static (bool Pass, List<string> Why) Check(DiffRun run, LayerPatterns glob)
     {
-        if (!glob.MatchesAll && !MatchesAnyLayer(run, glob))
-            return (false, [$"No layer in A or B matches {glob}, so nothing was checked. Check the spelling."]);
+        // Every pattern must match a layer: a typo beside a valid pattern would otherwise check less than asked.
+        if (Unmatched(run, glob) is { Count: > 0 } unmatched)
+            return (false, [$"No layer in A or B matches {string.Join(", ", unmatched)}, so the gate can't check it. Check the spelling."]);
 
         var why = new List<string>();
         foreach (var e in run.Result.TableEvents.Where(e => Touches(run, e, glob)))

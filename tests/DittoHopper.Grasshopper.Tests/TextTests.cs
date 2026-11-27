@@ -48,6 +48,7 @@ public sealed class TextTests
             Vocabulary.Describe(new DiffSettings { StableKey = "mark", ShapeTolerance = 0.5, Toggles = toggles }));
         Assert.Equal("Key diff:uid · Tolerance auto · Ignoring display order, print width", Vocabulary.Describe(new DiffSettings()));
         Assert.EndsWith(" · Scope Facade::*", Vocabulary.Describe(new DiffSettings { ScopeGlob = "Facade::*" }));
+        Assert.Contains("Tolerance 1E-07", Vocabulary.Describe(new DiffSettings { ShapeTolerance = 1e-7 })); // never shown as 0
     }
 
     [Fact]

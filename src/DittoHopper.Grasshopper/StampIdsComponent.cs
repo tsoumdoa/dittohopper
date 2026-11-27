@@ -1,5 +1,6 @@
 using DittoHopper.Core;
 using Grasshopper.Kernel;
+using Grasshopper.Kernel.Data;
 using Grasshopper.Kernel.Types;
 using Rhino;
 using Rhino.DocObjects;
@@ -9,9 +10,11 @@ namespace DittoHopper.Grasshopper;
 /// <summary>Opt-in: writes a stable id into the user text of referenced document objects that lack one.</summary>
 public sealed class StampIdsComponent : DittoComponent
 {
-    /// <summary>Run's value at the previous solution; null until the first, so opening a file never writes.</summary>
+    /// <summary>
+    /// Run's value at the previous solution, recorded after every solution (even one that never reached
+    /// SolveInstance); null until the first, so opening a file never writes.
+    /// </summary>
     private bool? lastRun;
-    private bool currentRun;
     private string? lastWrite;
 
     public StampIdsComponent()
@@ -30,7 +33,10 @@ public sealed class StampIdsComponent : DittoComponent
 
     protected override void RegisterInputParams(GH_InputParamManager p)
     {
-        p.AddGenericParameter("Objects", "Objects", "Objects in the active Rhino document: referenced geometry or object ids.", GH_ParamAccess.list);
+        p.AddGenericParameter("Objects", "Objects",
+            "Objects in the active Rhino document: referenced geometry or object ids, in any number of branches (one press stamps them all).",
+            GH_ParamAccess.tree);
+        p[0].Optional = true;
         p.AddTextParameter("Key", "Key", "User-text key to write. Use the same Key in Diff Settings if it is not diff:uid.",
             GH_ParamAccess.item, DiffSettings.DefaultStableKey);
         p.AddBooleanParameter("Run", "Run",
@@ -39,26 +45,24 @@ public sealed class StampIdsComponent : DittoComponent
     }
 
     protected override void RegisterOutputParams(GH_OutputParamManager p) =>
-        p.AddGenericParameter("Objects", "Objects", "The input objects, passed through.", GH_ParamAccess.list);
+        p.AddGenericParameter("Objects", "Objects", "The input objects, passed through.", GH_ParamAccess.tree);
 
     protected override void BeforeSolveInstance()
     {
         Message = null;
-        currentRun = false;
         base.BeforeSolveInstance();
     }
 
     protected override void SolveInstance(IGH_DataAccess da)
     {
-        var objects = new List<IGH_Goo>();
-        da.GetDataList(0, objects);
+        da.GetDataTree(0, out GH_Structure<IGH_Goo> tree);
+        var objects = tree?.AllData(true).ToList() ?? [];
         string key = DiffSettings.DefaultStableKey;
         da.GetData(1, ref key);
         bool run = false;
         da.GetData(2, ref run);
-        da.SetDataList(0, objects);
-        currentRun |= run;
-        bool write = run && lastRun == false; // a press, never the first solution after opening
+        if (tree is not null) da.SetDataTree(0, tree);
+        bool write = run && lastRun == false && da.Iteration == 0; // a press: one write per solution, never the first after opening
 
         key = key?.Trim() ?? "";
         if (key.Length == 0)
@@ -100,7 +104,7 @@ public sealed class StampIdsComponent : DittoComponent
 
     protected override void AfterSolveInstance()
     {
-        lastRun = currentRun;
+        lastRun = Params.Input[2].VolatileData.AllData(true).OfType<GH_Boolean>().Any(b => b.Value);
         base.AfterSolveInstance();
     }
 

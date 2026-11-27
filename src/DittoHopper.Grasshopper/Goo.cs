@@ -104,6 +104,22 @@ internal static class Geometry
             : 1;
 
     /// <summary>
+    /// The one unit rule for every geometry output and the preview: the Rhino document's units, or A's when there is
+    /// no document. Returns the factors for A's and B's lengths, and a remark naming the units when A, B and the
+    /// document don't all agree.
+    /// </summary>
+    public static (double A, double B, string? Remark) OutputUnits(DiffRun run, global::Rhino.RhinoDoc? doc)
+    {
+        var (ua, ub) = (run.A.Model.Info.Units, run.B.Model.Info.Units);
+        if (doc is null)
+            return (1, run.BToA, ua == ub ? null : $"Geometry is in A's units ({ua}): B ({ub}) is converted.");
+        string units = doc.ModelUnitSystem.ToString();
+        bool same = ua == ub && ua.ToString() == units;
+        return (Scale(ua, doc), Scale(ub, doc),
+            same ? null : $"Geometry is in the Rhino document's units ({units}): A is in {ua}, B in {ub}.");
+    }
+
+    /// <summary>
     /// Plain GH geometry, a copy the caller owns, scaled by <paramref name="scale"/> about the origin (a unit
     /// conversion). A block instance becomes its insertion point. Null for types Grasshopper has no geometry for.
     /// </summary>

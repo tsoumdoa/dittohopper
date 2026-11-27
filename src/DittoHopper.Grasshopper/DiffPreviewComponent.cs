@@ -71,9 +71,10 @@ public sealed class DiffPreviewComponent : DittoComponent
     /// <summary>Every B object with its status, removed A objects and, with ghost, modified A objects as they were.</summary>
     public static IEnumerable<Item> Build(DiffRun run, bool ghost, RhinoDoc? doc)
     {
-        // In the document's units; without a document, in A's.
-        var toDocA = Transform.Scale(Point3d.Origin, doc is null ? 1 : Geometry.Scale(run.A.Model.Info.Units, doc));
-        var toDocB = Transform.Scale(Point3d.Origin, doc is null ? run.BToA : Geometry.Scale(run.B.Model.Info.Units, doc));
+        // The same unit rule as the geometry outputs: the document's units, or A's without a document.
+        var units = Geometry.OutputUnits(run, doc);
+        var toDocA = Transform.Scale(Point3d.Origin, units.A);
+        var toDocB = Transform.Scale(Point3d.Origin, units.B);
         var added = run.Added.ToHashSet();
         var modified = run.Modified.Where(p => p.B is not null).Select(p => p.B!.Value).ToHashSet();
         var events = EventObjects(run);

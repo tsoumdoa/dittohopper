@@ -35,10 +35,10 @@ public sealed class ModelDiffComponent : DittoComponent
     protected override void RegisterOutputParams(GH_OutputParamManager p)
     {
         p.AddGeometryParameter("Added", "Added",
-            "Objects only in B, converted to A's units. A block instance is its insertion point.", GH_ParamAccess.list);
-        p.AddGeometryParameter("Removed", "Removed", "Objects only in A, as they were in A. A block instance is its insertion point.", GH_ParamAccess.list);
+            "Objects only in B, in the Rhino document's units (A's without one). A block instance is its insertion point.", GH_ParamAccess.list);
+        p.AddGeometryParameter("Removed", "Removed", "Objects only in A, as they were in A, in the document's units. A block instance is its insertion point.", GH_ParamAccess.list);
         p.AddGeometryParameter("Modified", "Modified",
-            "Matched objects that changed, as they are in B, converted to A's units. Use Diff Filter to see how.", GH_ParamAccess.list);
+            "Matched objects that changed, as they are in B, in the document's units. Use Diff Filter to see how.", GH_ParamAccess.list);
         p.AddTextParameter("Events", "Events", "Table events: layers, blocks, materials, linetypes and groups added, deleted, renamed or changed.", GH_ParamAccess.list);
         p.AddGenericParameter("Result", "Result", "The whole diff. Connect to Diff Filter, Diff Preview or Assert Unchanged; a Panel shows its summary.", GH_ParamAccess.item);
     }
@@ -87,10 +87,11 @@ public sealed class ModelDiffComponent : DittoComponent
 
         foreach (string note in run.Result.Header.Notes)
             AddRuntimeMessage(GH_RuntimeMessageLevel.Remark, note);
-        double scale = run.BToA;
-        da.SetDataList(0, run.Added.Select(id => Geometry.ToGoo(b.GeometryOf(id), scale)));
-        da.SetDataList(1, run.Removed.Select(id => Geometry.ToGoo(a.GeometryOf(id))));
-        da.SetDataList(2, run.Modified.Select(p => p.B is Guid id ? Geometry.ToGoo(b.GeometryOf(id), scale) : null));
+        var units = Geometry.OutputUnits(run, OnPingDocument()?.RhinoDocument ?? global::Rhino.RhinoDoc.ActiveDoc);
+        if (units.Remark is { } remark) AddRuntimeMessage(GH_RuntimeMessageLevel.Remark, remark);
+        da.SetDataList(0, run.Added.Select(id => Geometry.ToGoo(b.GeometryOf(id), units.B)));
+        da.SetDataList(1, run.Removed.Select(id => Geometry.ToGoo(a.GeometryOf(id), units.A)));
+        da.SetDataList(2, run.Modified.Select(p => p.B is Guid id ? Geometry.ToGoo(b.GeometryOf(id), units.B) : null));
         da.SetDataList(3, run.Result.TableEvents.Select(Describe.Event));
         da.SetData(4, new ResultGoo(run));
 
