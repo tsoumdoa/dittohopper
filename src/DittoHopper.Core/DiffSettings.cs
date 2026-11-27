@@ -2,8 +2,14 @@ namespace DittoHopper.Core;
 
 public sealed record DiffSettings
 {
+    /// <summary>The key Stamp IDs writes. Always identity, never data, even when another <see cref="StableKey"/> is configured.</summary>
+    public const string DefaultStableKey = "diff:uid";
+
     /// <summary>User-text key whose value is an object's own stable id (matching pass 1).</summary>
-    public string StableKey { get; init; } = "diff:uid";
+    public string StableKey { get; init; } = DefaultStableKey;
+
+    /// <summary>True for user-text keys that are identity rather than data, so never reported as changes.</summary>
+    public bool IsStableKey(string key) => key == StableKey || key == DefaultStableKey;
 
     /// <summary>Share of an A layer's matched objects that must sit on one new B layer to infer it is that layer.</summary>
     public double LayerInferShare { get; init; } = 0.60;

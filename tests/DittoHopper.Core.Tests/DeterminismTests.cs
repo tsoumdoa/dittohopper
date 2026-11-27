@@ -19,7 +19,7 @@ public class DeterminismTests
         "gh-rebake" => Fixtures.GhRebake(),
         "default-layer" => Fixtures.DefaultLayer(),
         "user-text" => Fixtures.UserText(),
-        "nested-block" => Fixtures.NestedBlock() is var (a, b, _) ? (a, b) : default,
+        "nested-block" => Fixtures.NestedBlock() is var (a, b, _, _) ? (a, b) : default,
         "copy-in-place" => Fixtures.CopyInPlace(),
         "delete-layer" => Fixtures.DeleteLayer(),
         "root-causes" => Fixtures.RootCauses(),
@@ -63,6 +63,16 @@ public class DeterminismTests
         a.Many(a.Layer("Extra"), 5);
         var second = ModelDiff.Diff(a.Build(), b.Build()).ChangeSets.Single(s => s.Kind == ChangeKind.Modified);
         Assert.Equal(first.Id, second.Id);
+    }
+
+    [Fact]
+    public void SkippedNotesAreSortedInTheResult()
+    {
+        var (a, b) = Fixtures.LayerRename();
+        a.Info = a.Info with { Skipped = ["worksession 'x.rws'", "linked block 'Site'"] };
+        var first = DiffJson.Serialize(ModelDiff.Diff(a.Build(), b.Build()));
+        a.Info = a.Info with { Skipped = ["linked block 'Site'", "worksession 'x.rws'"] };
+        Assert.Equal(first, DiffJson.Serialize(ModelDiff.Diff(a.Build(), b.Build())));
     }
 
     private static ModelSnapshot Shuffle(ModelSnapshot s, Random rng) => s with

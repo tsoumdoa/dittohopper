@@ -151,8 +151,170 @@ public class CompareTests
             n => Assert.StartsWith("Units differ: A is Millimeters, B is Meters.", n),
             n => Assert.StartsWith("Tolerances differ: A 0.01, B 0.1", n),
             n => Assert.StartsWith("Hash grids differ", n),
+            n => Assert.StartsWith("Block definition content could not be compared", n),
             n => Assert.Equal("B skipped: linked block 'Site'", n));
         // 1.5 m is 1500 mm: the instance did not move.
         Assert.Empty(r.ChangeSets);
+    }
+
+    [Fact]
+    public void BlockContentIsNotComparedAcrossHashGrids()
+    {
+        var (a, b, _, _) = Fixtures.NestedBlock();
+        b.Info = b.Info with { HashGrid = 0.001 };
+
+        var r = ModelDiff.Diff(a.Build(), b.Build());
+        Assert.Empty(r.TableEvents);
+        Assert.Empty(r.ChangeSets);
+        Assert.Contains(r.Header.Notes, n => n.StartsWith("Block definition content could not be compared"));
+    }
+
+    [Fact]
+    public void SplitTargetsReportTheirAppearanceAgainstTheSourceAsTableEvents()
+    {
+        var (a, b) = Fixtures.LayerSplit();
+        var targets = b.Layers.Where(l => l.Name.StartsWith("Slabs-")).Select(l => l.Id).ToList();
+        b.EditLayer(targets[0], l => l with { Color = Fixtures.Red });
+
+        var r = ModelDiff.Diff(a.Build(), b.Build());
+        Assert.Equal([TableEventKind.Split, TableEventKind.PropertyChanged], r.TableEvents.Select(e => e.Kind).Order());
+        var e = r.TableEvents.Single(e => e.Kind == TableEventKind.PropertyChanged);
+        Assert.Equal((PropertyKind.Color, "#000000", "#FF0000", targets[0], 7, true), (e.Property, e.From, e.To, e.B, e.AffectedObjects, e.Inferred));
+        Assert.Empty(r.ChangeSets);
+    }
+
+    [Fact]
+    public void GroupChangesGroupByIdsAndCause_NotByLabels()
+    {
+        var a = new SnapshotBuilder();
+        var layer = a.Layer("L");
+        var ab = a.Group("A, B");
+        var ga = a.Group("A");
+        var gb = a.Group("B");
+        var leaves = a.Object(layer, o => o with { GroupIds = [ab] });
+        var orphaned = a.Object(layer, o => o with { GroupIds = [ga, gb] });
+        var b = a.Clone();
+        b.Groups.RemoveAll(g => g.Id == ga || g.Id == gb);
+        b.Edit(leaves, o => o with { GroupIds = [] });
+        b.Edit(orphaned, o => o with { GroupIds = [] });
+
+        var r = ModelDiff.Diff(a.Build(), b.Build());
+        // Both render as "A, B" → none, but one left a group that still exists and the other lost two deleted groups.
+        Assert.Equal(2, r.ChangeSets.Count);
+        Assert.Null(r.ChangeSets.Single(s => s.Objects[0].A == leaves).RootCauseEventId);
+        var deleted = r.TableEvents.Where(e => e.Kind == TableEventKind.Removed).Select(e => e.Id).ToList();
+        Assert.Contains(r.ChangeSets.Single(s => s.Objects[0].A == orphaned).RootCauseEventId, deleted);
+    }
+
+    [Fact]
+    public void MovingOffALayerThatIsThenDeletedIsNotCausedByTheDelete()
+    {
+        var a = new SnapshotBuilder();
+        var keep = a.Layer("Walls");
+        var temp = a.Layer("Temp");
+        var moved = a.Object(temp);
+        var deleted = a.Object(temp);
+        var b = a.Clone();
+        b.Move([moved], keep);
+        b.RemoveObject(deleted);
+        b.RemoveLayer(temp);
+
+        var r = ModelDiff.Diff(a.Build(), b.Build());
+        var delete = Assert.Single(r.TableEvents);
+        Assert.Null(r.ChangeSets.Single(s => s.Kind == ChangeKind.Modified).RootCauseEventId);
+        Assert.Equal(delete.Id, r.ChangeSets.Single(s => s.Kind == ChangeKind.Removed).RootCauseEventId);
+    }
+
+    [Fact]
+    public void CompetingSplitsAreClaimedByCoverageNotByName()
+    {
+        var a = new SnapshotBuilder();
+        var other = a.Layer("Other");
+        var alpha = a.Layer("Alpha");
+        var beta = a.Layer("Beta");
+        var alphaObjects = a.Many(alpha, 4);
+        var betaObjects = a.Many(beta, 2);
+        var b = a.Clone();
+        var x = b.Layer("X");
+        var y = b.Layer("Y");
+        var z = b.Layer("Z");
+        // Alpha: 1 to X, 2 to Y, 1 to Other (75% covered). Beta: 1 to X, 1 to Z (100% covered).
+        b.Move([alphaObjects[0], betaObjects[0]], x);
+        b.Move(alphaObjects.Skip(1).Take(2), y);
+        b.Move([alphaObjects[3]], other);
+        b.Move([betaObjects[1]], z);
+        b.RemoveLayer(alpha);
+        b.RemoveLayer(beta);
+
+        var split = Assert.Single(ModelDiff.Diff(a.Build(), b.Build()).TableEvents, e => e.Kind == TableEventKind.Split);
+        Assert.Equal(beta, split.A);
+        Assert.Equal([x, z], split.Shares.Select(s => s.B));
+    }
+
+    [Fact]
+    public void NestedReferencesCompareThroughTheBlockMap()
+    {
+        var a = new SnapshotBuilder();
+        var layer = a.Layer("L");
+        var inner = a.Block("Inner", content: 1);
+        var other = a.Block("Other", content: 2);
+        var middle = a.Block("Middle", content: 3, inner);
+        var oldDef = a.Block("Old", content: 4);
+        var newDef = a.Block("New", content: 5, inner);
+        var viaMiddle = a.Instance(layer, middle);
+        var switched = a.Instance(layer, oldDef);
+        var stays = a.Instance(layer, newDef);
+
+        // Renaming Inner leaves Middle's hash alone under the contract: only a rename.
+        var renamed = a.Clone();
+        renamed.EditBlock(inner, d => d with { Name = "Renamed" });
+        var r1 = ModelDiff.Diff(a.Build(), renamed.Build());
+        Assert.Equal(TableEventKind.Renamed, Assert.Single(r1.TableEvents).Kind);
+        Assert.Empty(r1.ChangeSets);
+
+        // Middle swapping Inner for Other (same own hash) is an edit of Middle.
+        var swapped = a.Clone();
+        swapped.EditBlock(middle, d => d with { NestedBlockIds = [other] });
+        var e = Assert.Single(ModelDiff.Diff(a.Build(), swapped.Build()).TableEvents);
+        Assert.Equal((TableEventKind.PropertyChanged, PropertyKind.Content, "Middle"), (e.Kind, e.Property, e.Label));
+
+        // An instance switched Old → New doesn't inherit New's nested Inner edit; one that was on New does.
+        var edited = a.Clone();
+        edited.EditBlock(inner, d => d with { ContentHash = 9 });
+        edited.Edit(switched, o => o with { BlockDefinitionId = newDef });
+        var nested = ModelDiff.Diff(a.Build(), edited.Build()).ChangeSets.Single(s => s.Change!.Property == PropertyKind.BlockContent);
+        Assert.Equal([new ObjectPair(viaMiddle, viaMiddle), new ObjectPair(stays, stays)], nested.Objects);
+    }
+
+    [Fact]
+    public void ConfiguredStableKeyAndDiffUidAreBothIdentity()
+    {
+        var a = new SnapshotBuilder();
+        var layer = a.Layer("L");
+        var o1 = a.Object(layer, o => o with { UserText = new Dictionary<string, string> { ["diff:uid"] = "u1", ["mark"] = "C-12" } });
+        var b = a.Clone();
+        b.Edit(o1, o => o with { UserText = new Dictionary<string, string> { ["diff:uid"] = "u2", ["mark"] = "C-12" } });
+
+        var r = ModelDiff.Diff(a.Build(), b.Build(), new DiffSettings { StableKey = "mark" });
+        Assert.Equal(MatchedBy.StableKey, Assert.Single(r.Matches).By);
+        Assert.Empty(r.ChangeSets);
+    }
+
+    [Fact]
+    public void GroupMembershipMatchingIgnoresLayerInferShare()
+    {
+        var a = new SnapshotBuilder();
+        var layer = a.Layer("L");
+        var group = a.Group("Bolts");
+        var members = a.Many(layer, 4, o => o with { GroupIds = [group] });
+        var b = a.Clone();
+        b.Groups.RemoveAll(g => g.Id == group);
+        var regrouped = b.Group("Bolts");
+        foreach (var id in members.Take(3)) b.Edit(id, o => o with { GroupIds = [regrouped] });
+        b.Edit(members[3], o => o with { GroupIds = [] });
+
+        // 3 of 4 members regrouped: Jaccard 0.75, above the fixed cutoff, whatever the layer share says.
+        var r = ModelDiff.Diff(a.Build(), b.Build(), new DiffSettings { LayerInferShare = 0.9 });
+        Assert.Contains(r.TableMatches, m => (m.Table, m.A, m.B, m.By) == (TableKind.Group, group, regrouped, TableMatchedBy.Members));
     }
 }

@@ -135,4 +135,63 @@ public class MatchingTests
         Assert.Equal(4, r.Geometry.Count);
         Assert.All(r.Geometry, g => Assert.Equal(GeometryLevel.Unclassified, g.Level));
     }
+
+    [Fact]
+    public void Pass1_ACopyKeepsTheKeyButTheOriginalKeepsItsGuid()
+    {
+        var a = new SnapshotBuilder();
+        var layer = a.Layer("L");
+        var g = a.Object(layer, o => o with { UserText = Uid("x") }, at: new Vec3(0, 0, 0));
+        var b = a.Clone();
+        b.Edit(g, o => o with { Geometry = o.Geometry with { Hash = 1, Centroid = new Vec3(10, 0, 0) } });
+        // Rhino's Copy keeps user text: the copy sits where the original was.
+        var copy = b.Object(layer, o => o with { UserText = Uid("x") }, hash: a.Objects[0].Geometry.Hash, at: new Vec3(0, 0, 0));
+
+        var r = ModelDiff.Diff(a.Build(), b.Build());
+        AssertPairs(r, MatchedBy.StableKey, (g, g));
+        Assert.Equal(copy, r.ChangeSets.Single(s => s.Kind == ChangeKind.Added).Objects.Single().B);
+    }
+
+    [Fact]
+    public void Pass3_NeverPairsObjectsWithDifferentStableKeys()
+    {
+        var a = new SnapshotBuilder();
+        var layer = a.Layer("L");
+        var first = a.Object(layer, o => o with { UserText = Uid("first") }, hash: 5);
+        var b = a.Clone();
+        b.RemoveObject(first);
+        b.Object(layer, o => o with { UserText = Uid("second") }, hash: 5);
+
+        Assert.Empty(ModelDiff.Diff(a.Build(), b.Build()).Matches);
+    }
+
+    [Fact]
+    public void Pass3_CoincidentCopiesPairByOwnAttributesBeforeGuidOrder()
+    {
+        var a = new SnapshotBuilder();
+        var layer = a.Layer("L");
+        var red = a.Object(layer, o => o with { Color = new Sourced<int>(Fixtures.Red, ValueSource.ByObject) }, hash: 9, at: new Vec3());
+        var blue = a.Object(layer, o => o with { Color = new Sourced<int>(unchecked((int)0xFF0000FF), ValueSource.ByObject) }, hash: 9, at: new Vec3());
+        var b = a.Clone();
+        // Re-baked blue first, so GUID order alone would cross them.
+        var blue2 = b.Rebake(blue);
+        var red2 = b.Rebake(red);
+
+        var r = ModelDiff.Diff(a.Build(), b.Build());
+        AssertPairs(r, MatchedBy.GeometryHash, (red, red2), (blue, blue2));
+        Assert.Empty(r.ChangeSets);
+    }
+
+    [Fact]
+    public void HashGridsCompareAsLengths()
+    {
+        var (a, b) = Fixtures.GhRebake();
+        a.Info = a.Info with { HashGrid = 1 };
+        b.Info = b.Info with { Units = UnitSystem.Meters, AbsoluteTolerance = 0.00001, HashGrid = 0.001 };
+
+        var r = Fixtures.Diff((a, b));
+        Assert.True(r.Header.HashGridsMatch);
+        Assert.All(r.Matches, m => Assert.Equal(MatchedBy.GeometryHash, m.By));
+        Assert.Equal(4, r.Matches.Count);
+    }
 }

@@ -90,17 +90,17 @@ internal static class Fixtures
     }
 
     /// <summary>Inner is nested in Outer. Inner is edited: 3 Outer instances and 2 Inner instances are affected.</summary>
-    public static (SnapshotBuilder A, SnapshotBuilder B, Guid Inner) NestedBlock()
+    public static (SnapshotBuilder A, SnapshotBuilder B, Guid Inner, List<Guid> OuterInstances) NestedBlock()
     {
         var a = new SnapshotBuilder();
         var layer = a.Layer("Blocks");
         var inner = a.Block("Inner", content: 1);
         var outer = a.Block("Outer", content: 2, inner);
-        for (int i = 0; i < 3; i++) a.Instance(layer, outer, Xform.Translation(i * 1000, 0, 0));
+        var outerInstances = Enumerable.Range(0, 3).Select(i => a.Instance(layer, outer, Xform.Translation(i * 1000, 0, 0))).ToList();
         for (int i = 0; i < 2; i++) a.Instance(layer, inner, Xform.Translation(0, i * 1000, 0));
         var b = a.Clone();
         b.EditBlock(inner, d => d with { ContentHash = 11 });
-        return (a, b, inner);
+        return (a, b, inner, outerInstances);
     }
 
     public static (SnapshotBuilder A, SnapshotBuilder B) CopyInPlace()

@@ -43,7 +43,8 @@ public class FixtureTests
     {
         var r = Fixtures.Diff(Fixtures.ByLayerColor());
         var e = Assert.Single(r.TableEvents);
-        Assert.Equal((TableEventKind.PropertyChanged, PropertyKind.Color, "#000000", "#FF0000"), (e.Kind, e.Property, e.From, e.To));
+        // Three of the four objects inherit the color; the ByObject one doesn't count.
+        Assert.Equal((TableEventKind.PropertyChanged, PropertyKind.Color, "#000000", "#FF0000", 3), (e.Kind, e.Property, e.From, e.To, e.AffectedObjects));
         Assert.Empty(r.ChangeSets);
         Golden.Verify("bylayer-color", r);
     }
@@ -86,13 +87,13 @@ public class FixtureTests
     [Fact]
     public void NestedBlock_EachOuterInstanceReportsIt_InnerDefinitionIsRootCause()
     {
-        var (a, b, inner) = Fixtures.NestedBlock();
+        var (a, b, inner, outerInstances) = Fixtures.NestedBlock();
         var r = ModelDiff.Diff(a.Build(), b.Build());
         var e = Assert.Single(r.TableEvents);
         Assert.Equal((TableEventKind.PropertyChanged, PropertyKind.Content, inner, 5), (e.Kind, e.Property, e.A, e.AffectedObjects));
         var set = Assert.Single(r.ChangeSets);
         Assert.Equal(new PropertyChange(PropertyKind.BlockContent, "Inner", null, null), set.Change);
-        Assert.Equal(3, set.Objects.Count);
+        Assert.Equal(outerInstances.Select(id => new ObjectPair(id, id)), set.Objects);
         Assert.Equal(e.Id, set.RootCauseEventId);
         Golden.Verify("nested-block", r);
     }

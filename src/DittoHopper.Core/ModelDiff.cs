@@ -21,8 +21,8 @@ public static class ModelDiff
 
         return new DiffResult
         {
-            A = a.Info,
-            B = b.Info,
+            A = a.Info with { Skipped = [.. a.Info.Skipped.Order(StringComparer.Ordinal)] },
+            B = b.Info with { Skipped = [.. b.Info.Skipped.Order(StringComparer.Ordinal)] },
             Header = ctx.Header,
             Settings = ctx.Settings,
             TableMatches = ctx.AllTableMaps
@@ -71,14 +71,14 @@ internal sealed class DiffContext
         A = new Side(a);
         B = new Side(b);
         Settings = settings;
-        (Header, Scale) = MakeHeader(a.Info, b.Info);
+        (Header, Scale) = MakeHeader(a.Info, b.Info, hasBlocks: a.Blocks.Count + b.Blocks.Count > 0);
     }
 
     public IEnumerable<TableMap> AllTableMaps => [Layers, Blocks, Materials, Linetypes, Groups];
 
     public double Tolerance => Header.Tolerance;
 
-    private static (DiffHeader, double) MakeHeader(SnapshotInfo a, SnapshotInfo b)
+    private static (DiffHeader, double) MakeHeader(SnapshotInfo a, SnapshotInfo b, bool hasBlocks)
     {
         var notes = new List<string>();
         double scale = 1;
@@ -100,9 +100,16 @@ internal sealed class DiffContext
         if (Math.Abs(a.AbsoluteTolerance - tolB) > 1e-9 * tol)
             notes.Add(Inv($"Tolerances differ: A {a.AbsoluteTolerance}, B {tolB} (in {a.Units}). Using the larger, {tol}."));
 
-        bool gridsMatch = a.Units == b.Units && a.HashGrid == b.HashGrid;
+        // Grids compare as lengths: a 1 mm grid and a 0.001 m grid snap the same points to the same integers.
+        bool gridsMatch = Units.MetersPer(a.Units) is double ga && Units.MetersPer(b.Units) is double gb
+            ? Math.Abs(a.HashGrid * ga - b.HashGrid * gb) <= 1e-9 * Math.Max(a.HashGrid * ga, b.HashGrid * gb)
+            : a.Units == b.Units && a.HashGrid == b.HashGrid;
         if (!gridsMatch)
+        {
             notes.Add(Inv($"Hash grids differ: A {a.HashGrid} {a.Units}, B {b.HashGrid} {b.Units}. Geometry-hash matching (pass 3) is skipped and every pair's geometry is unclassified."));
+            if (hasBlocks)
+                notes.Add("Block definition content could not be compared, because it is hashed on those grids.");
+        }
 
         notes.AddRange(a.Skipped.Order(StringComparer.Ordinal).Select(s => "A skipped: " + s));
         notes.AddRange(b.Skipped.Order(StringComparer.Ordinal).Select(s => "B skipped: " + s));
@@ -131,6 +138,7 @@ internal sealed class Side
     /// <summary>Object counts per layer; top-level instances per definition (direct or nested); users per material, linetype, group.</summary>
     public readonly Dictionary<Guid, int> OnLayer = [], InstancesUsing = [], MaterialUsers = [], LinetypeUsers = [];
     public readonly Dictionary<Guid, List<Guid>> GroupMembers = [];
+    public readonly ILookup<Guid, ObjectRecord> ObjectsOnLayer;
     private readonly Dictionary<Guid, HashSet<Guid>> closures = [];
 
     public Side(ModelSnapshot s)
@@ -144,6 +152,7 @@ internal sealed class Side
 
         foreach (var layer in Layers)
             LayerPath[layer.Id] = BuildPath(layer);
+        ObjectsOnLayer = Objects.ToLookup(o => o.LayerId);
 
         foreach (var o in Objects)
         {

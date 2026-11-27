@@ -2,8 +2,8 @@ namespace DittoHopper.Core;
 
 /// <summary>
 /// The matching cascade, cheapest and most certain first. Each pass sees only objects no earlier pass claimed.
-/// Within a pass, ties (several candidates for one key) break by: same mapped layer, then nearest centroid,
-/// then GUID order.
+/// Within a pass, ties (several candidates for one key) break by: same GUID and kind, same mapped layer, most
+/// equal own attributes, nearest centroid, then GUID order.
 /// </summary>
 internal sealed class ObjectMatcher
 {
@@ -30,8 +30,6 @@ internal sealed class ObjectMatcher
     /// <summary>Pass 1: the stable-key user text value; else a name that is unique in both whole models.</summary>
     private void ByStableKey()
     {
-        string key = ctx.Settings.StableKey;
-        string? Uid(ObjectRecord o) => o.UserText.TryGetValue(key, out var v) && v.Length > 0 ? v : null;
         PairByKey(FreeA, FreeB, Uid, MatchedBy.StableKey, 1);
 
         var uniqueA = UniqueNames(ctx.A.Objects);
@@ -54,12 +52,18 @@ internal sealed class ObjectMatcher
                 Claim(a, b, MatchedBy.Guid, 1);
     }
 
-    /// <summary>Pass 3: an exact canonical geometry hash and the same kind. Only valid when both sides hashed on the same grid.</summary>
+    /// <summary>
+    /// Pass 3: an exact canonical geometry hash and the same kind. Only valid when both sides hashed on the same grid.
+    /// Two objects that carry different stable keys are different objects, so they never pair here.
+    /// </summary>
     private void ByGeometryHash() =>
-        PairByKey(FreeA, FreeB, o => $"{o.Kind}:{o.Geometry.Hash:x16}", MatchedBy.GeometryHash, 0.99);
+        PairByKey(FreeA, FreeB, o => $"{o.Kind}:{o.Geometry.Hash:x16}", MatchedBy.GeometryHash, 0.99,
+            (x, y) => Uid(x) is not string kx || Uid(y) is not string ky || kx == ky);
+
+    private string? Uid(ObjectRecord o) => o.UserText.TryGetValue(ctx.Settings.StableKey, out var v) && v.Length > 0 ? v : null;
 
     private void PairByKey(IEnumerable<ObjectRecord> freeA, IEnumerable<ObjectRecord> freeB, Func<ObjectRecord, string?> key,
-        MatchedBy by, double confidence)
+        MatchedBy by, double confidence, Func<ObjectRecord, ObjectRecord, bool>? allowed = null)
     {
         var groupsB = freeB.Where(o => key(o) is not null).GroupBy(o => key(o)!, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
@@ -67,19 +71,26 @@ internal sealed class ObjectMatcher
             .OrderBy(g => g.Key, StringComparer.Ordinal).ToList();
         foreach (var groupA in groupsA)
             if (groupsB.TryGetValue(groupA.Key, out var candidatesB))
-                foreach (var (a, b) in BreakTies([.. groupA], candidatesB))
+                foreach (var (a, b) in BreakTies([.. groupA], candidatesB, allowed ?? ((_, _) => true)))
                     Claim(a, b, by, confidence);
     }
 
-    /// <summary>Pairs candidates that all share one key: same mapped layer first, then nearest centroid, then GUID order.</summary>
-    private IEnumerable<(ObjectRecord A, ObjectRecord B)> BreakTies(List<ObjectRecord> a, List<ObjectRecord> b)
+    /// <summary>
+    /// Pairs candidates that all share one key, best-ranked pair first: same GUID and kind (a copy keeps its
+    /// original's key but not its GUID), same mapped layer, most equal own attributes, nearest centroid, GUID order.
+    /// </summary>
+    private IEnumerable<(ObjectRecord A, ObjectRecord B)> BreakTies(List<ObjectRecord> a, List<ObjectRecord> b,
+        Func<ObjectRecord, ObjectRecord, bool> allowed)
     {
         if (a.Count == 1 && b.Count == 1)
-            return [(a[0], b[0])];
+            return allowed(a[0], b[0]) ? [(a[0], b[0])] : [];
         var options =
             from x in a
             from y in b
-            orderby ctx.Layers.Map(x.LayerId) == y.LayerId ? 0 : 1,
+            where allowed(x, y)
+            orderby x.Id == y.Id && x.Kind == y.Kind ? 0 : 1,
+                ctx.Layers.Map(x.LayerId) == y.LayerId ? 0 : 1,
+                -Agreement(x, y),
                 Vec3.Distance(x.Geometry.Centroid, y.Geometry.Centroid * ctx.Scale),
                 x.Id, y.Id
             select (x, y);
@@ -94,6 +105,19 @@ internal sealed class ObjectMatcher
                 chosen.Add((x, y));
             }
         return chosen;
+    }
+
+    /// <summary>How many own attributes are equal: name, color, material, linetype, user text (stable keys aside).</summary>
+    private int Agreement(ObjectRecord x, ObjectRecord y)
+    {
+        var s = ctx.Settings;
+        bool sameText = x.UserText.Count(kv => !s.IsStableKey(kv.Key)) == y.UserText.Count(kv => !s.IsStableKey(kv.Key))
+            && x.UserText.All(kv => s.IsStableKey(kv.Key) || (y.UserText.TryGetValue(kv.Key, out var v) && v == kv.Value));
+        return (Sourcing.Norm(x.Name) == Sourcing.Norm(y.Name) ? 1 : 0)
+            + (Sourcing.Same(x.Color, y.Color, (p, q) => p == q) ? 1 : 0)
+            + (Sourcing.Same(x.Material, y.Material, ctx.Materials.Same) ? 1 : 0)
+            + (Sourcing.Same(x.Linetype, y.Linetype, ctx.Linetypes.Same) ? 1 : 0)
+            + (sameText ? 1 : 0);
     }
 
     private void Claim(ObjectRecord a, ObjectRecord b, MatchedBy by, double confidence)

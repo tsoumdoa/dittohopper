@@ -47,23 +47,31 @@ internal static class TableDiff
             if (!ctx.Layers.HasA(c.A) && !ctx.Layers.HasB(c.B))
                 ctx.Layers.Add(c.A, c.B, TableMatchedBy.Inferred, c.Share);
 
-        foreach (var (aLayer, flow) in ordered)
+        // Splits: the best-covered candidate claims its targets first; ties stay in A path order.
+        List<(Guid B, int Count)> FreeTargets(Dictionary<Guid, int> flow) => [.. flow
+            .Where(kv => !ctx.Layers.HasB(kv.Key) && !ctx.SplitTargetLayers.Contains(kv.Key))
+            .OrderBy(kv => ctx.B.LayerPath[kv.Key], StringComparer.Ordinal)
+            .Select(kv => (kv.Key, kv.Value))];
+        double Covered(List<(Guid B, int Count)> targets, Dictionary<Guid, int> flow) =>
+            targets.Sum(t => t.Count) / (double)flow.Values.Sum();
+        var splitCandidates = ordered
+            .Where(f => !ctx.Layers.HasA(f.Key))
+            .OrderByDescending(f => Covered(FreeTargets(f.Value), f.Value))
+            .ToList();
+        foreach (var (aLayer, flow) in splitCandidates)
         {
-            if (ctx.Layers.HasA(aLayer))
+            var targets = FreeTargets(flow);
+            if (targets.Count < 2 || Covered(targets, flow) < threshold)
                 continue;
-            var targets = flow
-                .Where(kv => !ctx.Layers.HasB(kv.Key) && !ctx.SplitTargetLayers.Contains(kv.Key))
-                .OrderBy(kv => ctx.B.LayerPath[kv.Key], StringComparer.Ordinal)
-                .Select(kv => (kv.Key, kv.Value)).ToList();
-            int total = flow.Values.Sum();
-            if (targets.Count < 2 || targets.Sum(t => t.Value) / (double)total < threshold)
-                continue;
-            ctx.Splits[aLayer] = new LayerSplit(targets, total);
-            ctx.SplitTargetLayers.UnionWith(targets.Select(t => t.Key));
+            ctx.Splits[aLayer] = new LayerSplit(targets, flow.Values.Sum());
+            ctx.SplitTargetLayers.UnionWith(targets.Select(t => t.B));
         }
     }
 
-    /// <summary>Groups match by id, then by membership: the new B group sharing the most matched members (Jaccard ≥ LayerInferShare).</summary>
+    /// <summary>Minimum Jaccard overlap of matched members for two groups to be the same group.</summary>
+    private const double GroupOverlapCutoff = 0.5;
+
+    /// <summary>Groups match by id, then by membership: the new B group sharing the most matched members (Jaccard ≥ <see cref="GroupOverlapCutoff"/>).</summary>
     public static void MatchGroups(DiffContext ctx, IReadOnlyList<Pair> pairs)
     {
         MatchUnique(ctx, ctx.Groups, s => s.Groups, g => g.Id, (_, g) => g.Id.ToString(), TableMatchedBy.Id);
@@ -85,7 +93,7 @@ internal static class TableDiff
             {
                 int union = membersA.Count + ctx.B.GroupMembers[gb].Count - shared;
                 double jaccard = shared / (double)union;
-                if (jaccard >= ctx.Settings.LayerInferShare)
+                if (jaccard >= GroupOverlapCutoff)
                     candidates.Add((ga.Id, gb, jaccard));
             }
         }
@@ -106,7 +114,7 @@ internal static class TableDiff
 
     private static void LayerEvents(DiffContext ctx)
     {
-        var (a, b, t) = (ctx.A, ctx.B, ctx.Settings.Toggles);
+        var (a, b) = (ctx.A, ctx.B);
         foreach (var la in a.Layers)
         {
             string label = a.LayerPath[la.Id];
@@ -125,25 +133,18 @@ internal static class TableDiff
                     : lb.ParentId is null;
                 if (!sameParent)
                     Ev(TableEventKind.Reparented, null, a.ParentPath(la), b.ParentPath(lb));
-                if (t.Color && la.Color != lb.Color)
-                    Ev(TableEventKind.PropertyChanged, PropertyKind.Color, Format.Color(la.Color), Format.Color(lb.Color));
-                if (t.Linetype && !ctx.Linetypes.Same(la.LinetypeId, lb.LinetypeId))
-                    Ev(TableEventKind.PropertyChanged, PropertyKind.Linetype, a.LinetypeLabel(la.LinetypeId), b.LinetypeLabel(lb.LinetypeId));
-                if (t.Material && !ctx.Materials.Same(la.MaterialId, lb.MaterialId))
-                    Ev(TableEventKind.PropertyChanged, PropertyKind.Material, a.MaterialLabel(la.MaterialId), b.MaterialLabel(lb.MaterialId));
-                if (t.PrintWidth && la.PrintWidth != lb.PrintWidth)
-                    Ev(TableEventKind.PropertyChanged, PropertyKind.PrintWidth, Format.Number(la.PrintWidth), Format.Number(lb.PrintWidth));
-                if (la.Visible != lb.Visible)
-                    Ev(TableEventKind.PropertyChanged, PropertyKind.Visible, Format.Bool(la.Visible), Format.Bool(lb.Visible));
-                if (la.Locked != lb.Locked)
-                    Ev(TableEventKind.PropertyChanged, PropertyKind.Locked, Format.Bool(la.Locked), Format.Bool(lb.Locked));
+                LayerPropertyEvents(ctx, la, lb, label, inferred, m.Confidence);
             }
             else if (ctx.Splits.TryGetValue(la.Id, out var split))
             {
                 var shares = split.Targets
                     .Select(x => new SplitShare(x.B, b.LayerPath[x.B], x.Count, x.Count / (double)split.Total)).ToList();
+                double confidence = split.Targets.Sum(x => x.Count) / (double)split.Total;
                 Emit(ctx, TableKind.Layer, TableEventKind.Split, la.Id, null, label, a.OnLayer.GetValueOrDefault(la.Id),
-                    inferred: true, confidence: split.Targets.Sum(x => x.Count) / (double)split.Total, shares: shares);
+                    inferred: true, confidence: confidence, shares: shares);
+                // Each target's appearance against the source: still table events, so the objects get no rows.
+                foreach (var target in split.Targets)
+                    LayerPropertyEvents(ctx, la, b.LayerById[target.B], label, inferred: true, confidence);
             }
             else
             {
@@ -157,6 +158,44 @@ internal static class TableDiff
                     Emit(ctx, TableKind.Layer, TableEventKind.Added, null, lb.Id, b.LayerPath[lb.Id], b.OnLayer.GetValueOrDefault(lb.Id));
     }
 
+    /// <summary>
+    /// Appearance and state differences between an A layer and its B counterpart (or split target). Appearance
+    /// events count the objects that inherit the property from the layer; visible and locked count all on it.
+    /// </summary>
+    private static void LayerPropertyEvents(DiffContext ctx, LayerRecord la, LayerRecord lb, string label, bool inferred, double confidence)
+    {
+        var (a, b, t) = (ctx.A, ctx.B, ctx.Settings.Toggles);
+        var on = b.ObjectsOnLayer[lb.Id];
+        void Ev(PropertyKind property, string from, string to, Func<ObjectRecord, bool> affected) =>
+            Emit(ctx, TableKind.Layer, TableEventKind.PropertyChanged, la.Id, lb.Id, label, on.Count(affected),
+                property, from, to, inferred, confidence);
+
+        if (t.Color && la.Color != lb.Color)
+            Ev(PropertyKind.Color, Format.Color(la.Color), Format.Color(lb.Color), o => o.Color.Source == ValueSource.ByLayer);
+        if (t.Linetype && !ctx.Linetypes.Same(la.LinetypeId, lb.LinetypeId))
+            Ev(PropertyKind.Linetype, a.LinetypeLabel(la.LinetypeId), b.LinetypeLabel(lb.LinetypeId), o => o.Linetype.Source == ValueSource.ByLayer);
+        if (t.Material && !ctx.Materials.Same(la.MaterialId, lb.MaterialId))
+            Ev(PropertyKind.Material, a.MaterialLabel(la.MaterialId), b.MaterialLabel(lb.MaterialId), o => o.Material.Source == ValueSource.ByLayer);
+        if (t.PrintWidth && la.PrintWidth != lb.PrintWidth)
+            Ev(PropertyKind.PrintWidth, Format.Number(la.PrintWidth), Format.Number(lb.PrintWidth), o => o.PrintWidth.Source == ValueSource.ByLayer);
+        if (la.Visible != lb.Visible)
+            Ev(PropertyKind.Visible, Format.Bool(la.Visible), Format.Bool(lb.Visible), _ => true);
+        if (la.Locked != lb.Locked)
+            Ev(PropertyKind.Locked, Format.Bool(la.Locked), Format.Bool(lb.Locked), _ => true);
+    }
+
+    /// <summary>
+    /// A definition changed itself when its own content hash differs (only comparable on matching hash grids)
+    /// or when the definitions nested in it differ through the block map.
+    /// </summary>
+    private static bool DefinitionChanged(DiffContext ctx, BlockRecord da, BlockRecord db)
+    {
+        if (ctx.Header.HashGridsMatch && da.ContentHash != db.ContentHash)
+            return true;
+        var nestedA = da.NestedBlockIds.Select(ctx.Blocks.Map).ToHashSet();
+        return nestedA.Contains(null) || !nestedA.SetEquals(db.NestedBlockIds.Select(id => (Guid?)id));
+    }
+
     private static void BlockEvents(DiffContext ctx)
     {
         var (a, b) = (ctx.A, ctx.B);
@@ -168,7 +207,7 @@ internal static class TableDiff
                 int n = b.InstancesUsing.GetValueOrDefault(db.Id);
                 if (da.Name != db.Name)
                     Emit(ctx, TableKind.Block, TableEventKind.Renamed, da.Id, db.Id, da.Name, n, from: da.Name, to: db.Name);
-                if (ctx.Settings.Toggles.BlockDefinition && da.ContentHash != db.ContentHash)
+                if (ctx.Settings.Toggles.BlockDefinition && DefinitionChanged(ctx, da, db))
                     ctx.ContentEvent[db.Id] =
                         Emit(ctx, TableKind.Block, TableEventKind.PropertyChanged, da.Id, db.Id, da.Name, n, PropertyKind.Content);
             }

@@ -25,7 +25,11 @@ public sealed record SnapshotInfo
     public required UnitSystem Units { get; init; }
     public required double AbsoluteTolerance { get; init; }
 
-    /// <summary>Grid spacing the geometry hashes were snapped to, in <see cref="Units"/>. Hashes compare only on equal grids.</summary>
+    /// <summary>
+    /// Grid spacing the hashes were snapped to, in <see cref="Units"/>. The adapter hashes coordinates in the
+    /// snapshot's own units. Two snapshots' hashes compare only when their grids are the same length in metres
+    /// (a 1 mm grid and a 0.001 m grid match); otherwise pass 3 and block content comparison are skipped.
+    /// </summary>
     public required double HashGrid { get; init; }
 
     /// <summary>What the snapshot left out, e.g. worksession references or linked blocks. Copied into the result header.</summary>
@@ -71,8 +75,9 @@ public sealed record BlockRecord
     public required string Name { get; init; }
 
     /// <summary>
-    /// Hash of the definition's own objects. A nested instance contributes its transform, attributes and the
-    /// nested definition's name, not that definition's content, so an inner edit changes only the inner hash.
+    /// Hash of the definition's own objects. A nested instance contributes only its transform and attributes,
+    /// never the nested definition's id, name or content: which definitions are nested is compared through
+    /// the block map from <see cref="NestedBlockIds"/>, so an inner edit or rename changes only the inner entry.
     /// </summary>
     public ulong ContentHash { get; init; }
 
