@@ -4,6 +4,7 @@
     "source": "A.3dm",
     "units": "millimeters",
     "absoluteTolerance": 0.01,
+    "angleTolerance": 0.017453292519943295,
     "hashGrid": 0.01,
     "skipped": []
   },
@@ -11,6 +12,7 @@
     "source": "B.3dm",
     "units": "millimeters",
     "absoluteTolerance": 0.01,
+    "angleTolerance": 0.017453292519943295,
     "hashGrid": 0.01,
     "skipped": []
   },
@@ -78,7 +80,7 @@
       "level": "dataOnly",
       "detail": "rebuilt",
       "maxDeviation": 0.00651,
-      "meanDeviation": 0.00044
+      "meanDeviation": 0.00028
     },
     {
       "a": "00000000-0000-0000-0000-000000000003",
@@ -92,7 +94,7 @@
       "a": "00000000-0000-0000-0000-000000000004",
       "b": "00000000-0000-0000-0000-000000000004",
       "level": "dataOnly",
-      "detail": "NURBS ↔ polyline",
+      "detail": "line ↔ NURBS",
       "maxDeviation": 0,
       "meanDeviation": 0
     }

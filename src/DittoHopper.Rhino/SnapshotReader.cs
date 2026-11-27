@@ -18,6 +18,7 @@ internal sealed class ModelSource
     public required string Label { get; init; }
     public required global::Rhino.UnitSystem Units { get; init; }
     public required double Tolerance { get; init; }
+    public double? AngleTolerance { get; init; }
     public Guid? CurrentLayer { get; init; }
     public List<Layer> Layers { get; } = [];
     public List<Material> Materials { get; } = [];
@@ -25,6 +26,7 @@ internal sealed class ModelSource
     public List<Group> Groups { get; } = [];
     public List<SourceBlock> Blocks { get; } = [];
     public List<SourceObject> Objects { get; } = [];
+    /// <summary>Pattern keys by index: see <see cref="GeometryHasher.PatternKey"/>.</summary>
     public Dictionary<int, string> HatchPatterns { get; } = [];
     public Dictionary<Guid, string> DimStyles { get; } = [];
     public List<string> Skipped { get; } = [];
@@ -50,16 +52,32 @@ internal static class SnapshotReader
         var objects = src.Objects.Where(o => o.Geometry is not null).ToList();
         if (objects.Count < src.Objects.Count)
             src.Skipped.Add($"{src.Objects.Count - objects.Count} objects without geometry");
-        var owned = objects.Select(o => Owned(o.Geometry!)).ToArray();
+        var owned = new GeometryBase[objects.Count];
+        try
+        {
+            for (int i = 0; i < objects.Count; i++) owned[i] = Owned(objects[i].Geometry!);
+            return Read(src, grid, objects, owned, names, layerIds, materialIds, linetypeIds, groupIds);
+        }
+        catch
+        {
+            // Nothing owns the copies until the snapshot exists.
+            foreach (var g in owned) g?.Dispose();
+            throw;
+        }
+    }
+
+    private static RhinoSnapshot Read(ModelSource src, double grid, List<SourceObject> objects, GeometryBase[] owned, HashNames names,
+        Dictionary<int, Guid> layerIds, Dictionary<int, Guid> materialIds, Dictionary<int, Guid> linetypeIds, Dictionary<int, Guid> groupIds)
+    {
         var signatures = new GeometrySignature[owned.Length];
         Parallel.For(0, owned.Length, i => signatures[i] = GeometryHasher.Signature(owned[i], GeometryHasher.Hash(owned[i], grid, names)));
 
         var records = objects.Select((o, i) => ObjectRecord(o, owned[i], signatures[i], layerIds, materialIds, linetypeIds, groupIds)).ToList();
         var geometry = new Dictionary<Guid, RhinoSnapshot.Entry>(objects.Count);
         for (int i = 0; i < objects.Count; i++)
-            geometry[objects[i].Id] = new RhinoSnapshot.Entry(owned[i], signatures[i].Hash);
+            geometry[objects[i].Id] = new RhinoSnapshot.Entry(owned[i], signatures[i]);
 
-        var blocks = Blocks(src, grid, names); // may add to Skipped
+        var blocks = Blocks(src, grid, names, layerIds); // may add to Skipped
         var model = new ModelSnapshot
         {
             Info = new SnapshotInfo
@@ -68,6 +86,7 @@ internal static class SnapshotReader
                 CapturedAt = DateTimeOffset.UtcNow,
                 Units = ToCore(src.Units),
                 AbsoluteTolerance = src.Tolerance,
+                AngleTolerance = src.AngleTolerance,
                 HashGrid = grid,
                 Skipped = [.. src.Skipped],
             },
@@ -149,12 +168,14 @@ internal static class SnapshotReader
 
     /// <summary>
     /// A definition's content hash covers each member's geometry and attributes, in any order. Tables are
-    /// referenced by name and a member's layer is left out: ids differ between files and a layer rename would
-    /// otherwise change every definition with members on it. A nested
+    /// referenced by name and a member's layer is left out of the hash (ids differ between files, and a layer
+    /// rename would change every definition with members on it); it is kept beside the hash in
+    /// <see cref="BlockRecord.Members"/>, which Core compares through the layer map.
+    /// A nested
     /// instance contributes only its placement (transform and attributes), computed once and also recorded in
     /// <see cref="BlockRecord.Nested"/>.
     /// </summary>
-    private static List<BlockRecord> Blocks(ModelSource src, double grid, HashNames names)
+    private static List<BlockRecord> Blocks(ModelSource src, double grid, HashNames names, Dictionary<int, Guid> layers)
     {
         var members = src.Blocks.Where(b => !b.Linked).SelectMany(b => b.Members.Where(m => m.Geometry is not null)).ToArray();
         var hashes = new ulong[members.Length];
@@ -189,6 +210,7 @@ internal static class SnapshotReader
                 ContentHash = h.Finish(),
                 Nested = [.. b.Members.Where(m => m.Geometry is InstanceReferenceGeometry)
                     .Select(m => new NestedBlock(((InstanceReferenceGeometry)m.Geometry!).ParentIdefId, byMember[m]))],
+                Members = [.. b.Members.Where(byMember.ContainsKey).Select(m => new BlockMember(byMember[m], Lookup(layers, m.Attributes.LayerIndex)))],
             });
         }
         return blocks;

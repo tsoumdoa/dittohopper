@@ -54,20 +54,20 @@ public sealed class NoiseReportTests(RhinoHost host, ITestOutputHelper output)
     private void Measure(string name, FixturePair pair, int trueChanges)
     {
         var clock = Stopwatch.StartNew();
-        var a = RhinoSnapshot.FromFile(pair.A);
+        using var a = RhinoSnapshot.FromFile(pair.A);
         var snapA = clock.Elapsed;
         clock.Restart();
-        var b = RhinoSnapshot.FromFile(pair.B);
+        using var b = RhinoSnapshot.FromFile(pair.B);
         Print(name, a, b, snapA, clock.Elapsed, trueChanges);
     }
 
     private void MeasureDoc(string name, string file, RhinoDoc doc)
     {
         var clock = Stopwatch.StartNew();
-        var a = RhinoSnapshot.FromFile(file);
+        using var a = RhinoSnapshot.FromFile(file);
         var snapA = clock.Elapsed;
         clock.Restart();
-        var b = RhinoSnapshot.FromDocument(doc);
+        using var b = RhinoSnapshot.FromDocument(doc);
         Print(name, a, b, snapA, clock.Elapsed, 0);
     }
 

@@ -1,9 +1,14 @@
+using System.Globalization;
 using DittoHopper.Core;
+using Rhino.DocObjects;
 using Rhino.Geometry;
 
 namespace DittoHopper.Rhino;
 
-/// <summary>Table names the hash needs, so geometry that refers to a table hashes alike in any file.</summary>
+/// <summary>
+/// Table entries the hash needs, by name (hatch patterns by <see cref="GeometryHasher.PatternKey"/>: name, fill
+/// and lines), so geometry that refers to a table hashes alike in any file.
+/// </summary>
 internal sealed record HashNames(
     IReadOnlyDictionary<int, string> HatchPatterns,
     IReadOnlyDictionary<Guid, string> DimStyles,
@@ -13,8 +18,9 @@ internal sealed record HashNames(
 /// The canonical geometry hash, per geometry type: a type tag and the structure (degrees, counts, knots,
 /// weights, indices, trims) as exact integers, and every coordinate snapped to the grid by
 /// <see cref="CanonicalHash"/>. Rhino's own serialization is never hashed: it carries non-geometric data.
-/// Curves and surfaces go through their NURBS form, so a line and the same degree-1 NURBS curve hash alike;
-/// knots are normalized to the domain, so a domain change alone is not a geometry change.
+/// Curves and surfaces go through their NURBS form with knots normalized to the domain; a top-level curve also
+/// adds its type and domain, so a line that became the same degree-1 NURBS curve, or a domain change, differs
+/// in hash and the ladder lists it as Data-only rather than hiding it.
 /// </summary>
 internal static class GeometryHasher
 {
@@ -35,6 +41,7 @@ internal static class GeometryHasher
                 foreach (var p in pc.GetPoints()) Add(h, p);
                 break;
             case Curve c:
+                h.Add(c.GetType().Name).Add(Exact(c.Domain.T0)).Add(Exact(c.Domain.T1));
                 AddCurve(h, c);
                 break;
             case Brep b:
@@ -64,8 +71,11 @@ internal static class GeometryHasher
             case Hatch hatch:
                 AddHatch(h, hatch, names);
                 break;
+            case Light light:
+                AddLight(h, light);
+                break;
             default:
-                // Lights and anything newer: the type and where it is.
+                // Anything newer: the type and where it is.
                 h.Add((long)g.ObjectType);
                 AddBox(h, g.GetBoundingBox(true));
                 break;
@@ -292,6 +302,25 @@ internal static class GeometryHasher
             h.Add((long)f.VertexCount);
             for (int i = 0; i < f.VertexCount; i++) h.Add(index[f.VertexAt(i).Id]);
         }
+    }
+
+    /// <summary>A hatch pattern by content: name, fill type and every line's angle, base point, offset and dashes.</summary>
+    public static string PatternKey(HatchPattern p)
+    {
+        static string N(double v) => v.ToString("R", CultureInfo.InvariantCulture);
+        var lines = p.HatchLines.Select(l =>
+            $"{N(l.Angle)},{N(l.BasePoint.X)},{N(l.BasePoint.Y)},{N(l.Offset.X)},{N(l.Offset.Y)}:{string.Join(",", l.GetDashes.Select(N))}");
+        return $"{p.Name}|{p.FillType}|{string.Join(";", lines)}";
+    }
+
+    /// <summary>The editable properties of a light: style, on/off, intensity, colours, placement and spot shape.</summary>
+    private static void AddLight(CanonicalHash h, Light l)
+    {
+        h.Add((long)l.LightStyle).Add(l.IsEnabled ? 1L : 0L).Add(Exact(l.Intensity)).Add(Exact(l.ShadowIntensity));
+        foreach (var c in new[] { l.Diffuse, l.Specular, l.Ambient }) h.Add((long)c.ToArgb());
+        Add(h, l.Location);
+        foreach (var v in new[] { l.Direction, l.Length, l.Width }) h.Add(v.X).Add(v.Y).Add(v.Z);
+        h.Add(Exact(l.SpotAngleRadians)).Add(Exact(l.HotSpot)).Add(Exact(l.SpotExponent));
     }
 
     private static void AddHatch(CanonicalHash h, Hatch hatch, HashNames names)

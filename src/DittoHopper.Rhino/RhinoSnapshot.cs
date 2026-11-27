@@ -10,22 +10,45 @@ namespace DittoHopper.Rhino;
 /// A Core <see cref="ModelSnapshot"/> of a .3dm file or a live document, plus the geometry it was taken from,
 /// which <see cref="RhinoGeometryService"/> needs for the geometry ladder. Call from a thread that may use
 /// RhinoCommon; hashing runs in parallel internally.
+/// <para>
+/// The snapshot owns copies of the geometry: whoever creates one disposes it (a cache disposes the snapshot it
+/// replaces). <see cref="Model"/> stays usable after disposal, since it is plain data; diffing with the
+/// geometry ladder needs both snapshots undisposed.
+/// </para>
 /// </summary>
-public sealed class RhinoSnapshot
+public sealed class RhinoSnapshot : IDisposable
 {
-    internal readonly record struct Entry(GeometryBase Geometry, ulong Hash);
+    internal readonly record struct Entry(GeometryBase Geometry, GeometrySignature Signature);
+
+    private readonly IReadOnlyDictionary<Guid, Entry> geometry;
+    private bool disposed;
 
     internal RhinoSnapshot(ModelSnapshot model, IReadOnlyDictionary<Guid, Entry> geometry, HashNames names)
     {
         Model = model;
-        Geometry = geometry;
+        this.geometry = geometry;
         Names = names;
     }
 
     public ModelSnapshot Model { get; }
 
     /// <summary>Owned copies of the top-level geometry, by object id.</summary>
-    internal IReadOnlyDictionary<Guid, Entry> Geometry { get; }
+    internal IReadOnlyDictionary<Guid, Entry> Geometry
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            return geometry;
+        }
+    }
+
+    /// <summary>Releases the geometry copies. The model data stays readable.</summary>
+    public void Dispose()
+    {
+        if (disposed) return;
+        disposed = true;
+        foreach (var e in geometry.Values) e.Geometry.Dispose();
+    }
 
     internal HashNames Names { get; }
 
@@ -44,13 +67,14 @@ public sealed class RhinoSnapshot
             Label = label,
             Units = file.Settings.ModelUnitSystem,
             Tolerance = file.Settings.ModelAbsoluteTolerance,
+            AngleTolerance = file.Settings.ModelAngleToleranceRadians,
         };
         // File3dm tables: enumerate with foreach; their IList indexers and CopyTo return nulls (RhinoCommon 8.36).
         foreach (var l in file.AllLayers) src.Layers.Add(l);
         foreach (var m in file.AllMaterials) src.Materials.Add(m);
         foreach (var l in file.AllLinetypes) src.Linetypes.Add(l);
         foreach (var g in file.AllGroups) src.Groups.Add(g);
-        foreach (var p in file.AllHatchPatterns) src.HatchPatterns[p.Index] = p.Name ?? "";
+        foreach (var p in file.AllHatchPatterns) src.HatchPatterns[p.Index] = GeometryHasher.PatternKey(p);
         foreach (var d in file.AllDimStyles) src.DimStyles[d.Id] = d.Name ?? "";
 
         var members = new Dictionary<Guid, SourceObject>();
@@ -81,6 +105,7 @@ public sealed class RhinoSnapshot
             Label = label ?? (string.IsNullOrEmpty(doc.Name) ? "Untitled" : doc.Name),
             Units = doc.ModelUnitSystem,
             Tolerance = doc.ModelAbsoluteTolerance,
+            AngleTolerance = doc.ModelAngleToleranceRadians,
             CurrentLayer = doc.Layers.CurrentLayer?.Id,
         };
         int referenceLayers = 0, referenceObjects = 0;
@@ -93,7 +118,7 @@ public sealed class RhinoSnapshot
         foreach (var m in doc.Materials) if (!m.IsDeleted) src.Materials.Add(m);
         foreach (var l in doc.Linetypes) if (!l.IsDeleted) src.Linetypes.Add(l);
         foreach (var g in doc.Groups) if (!g.IsDeleted) src.Groups.Add(g);
-        foreach (var p in doc.HatchPatterns) if (!p.IsDeleted) src.HatchPatterns[p.Index] = p.Name ?? "";
+        foreach (var p in doc.HatchPatterns) if (!p.IsDeleted) src.HatchPatterns[p.Index] = GeometryHasher.PatternKey(p);
         foreach (var d in doc.DimStyles) if (!d.IsDeleted) src.DimStyles[d.Id] = d.Name ?? "";
         foreach (var d in doc.InstanceDefinitions)
         {
@@ -119,7 +144,8 @@ public sealed class RhinoSnapshot
 
     /// <summary>
     /// "What did I change this session?": A is the document's file as last saved, B is the document now.
-    /// Throws when the document has never been saved, since there is no last save to compare with.
+    /// Throws when the document has never been saved, since there is no last save to compare with. The caller
+    /// owns (and disposes) both snapshots.
     /// </summary>
     public static (RhinoSnapshot LastSave, RhinoSnapshot Current) DocumentVsLastSave(RhinoDoc doc)
     {
@@ -129,7 +155,16 @@ public sealed class RhinoSnapshot
                 "This document has not been saved yet, so there is no last save to compare it with. Save it once, then compare.");
         string name = Path.GetFileName(path);
         using var file = File3dm.Read(path) ?? throw new IOException($"Could not read the last save, '{path}'.");
-        return (FromFile(file, name + " (last save)"), FromDocument(doc, name + " (open)"));
+        var lastSave = FromFile(file, name + " (last save)");
+        try
+        {
+            return (lastSave, FromDocument(doc, name + " (open)"));
+        }
+        catch
+        {
+            lastSave.Dispose();
+            throw;
+        }
     }
 }
 

@@ -55,9 +55,9 @@ public sealed class AdapterTests(RhinoHost host)
         Assert.NotEqual(Hash(text), Hash(renamed));
         Assert.NotEqual(Hash(new TextDot("A", Point3d.Origin)), Hash(new TextDot("B", Point3d.Origin)));
 
-        // A line and the same degree-1 NURBS curve are the same geometry.
+        // A line that became the same degree-1 NURBS curve differs in hash, so the ladder can list it as Data-only.
         var line = new LineCurve(new Point3d(0, 0, 0), new Point3d(100, 0, 0));
-        Assert.Equal(Hash(line), Hash(line.ToNurbsCurve()));
+        Assert.NotEqual(Hash(line), Hash(line.ToNurbsCurve()));
     });
 
     [RhinoFact]
@@ -98,7 +98,7 @@ public sealed class AdapterTests(RhinoHost host)
     {
         var source = FixturePair.Create("linked-source", f => { Model.Setup(f); Model.Add(f, new LineCurve(Point3d.Origin, new Point3d(1, 0, 0)), Model.Layer(f, "L"), "x"); }, _ => { });
         var pair = FixturePair.Create("linked", f => { Model.Setup(f); f.AllInstanceDefinitions.AddLinked(source.A, "Site", ""); }, _ => { });
-        var snapshot = RhinoSnapshot.FromFile(pair.A);
+        using var snapshot = RhinoSnapshot.FromFile(pair.A);
         Assert.Contains(snapshot.Model.Info.Skipped, s => s.StartsWith("linked block definition 'Site'", StringComparison.Ordinal));
         Assert.Equal(0UL, Assert.Single(snapshot.Model.Blocks).ContentHash);
     });
@@ -111,13 +111,19 @@ public sealed class AdapterTests(RhinoHost host)
         Assert.NotNull(doc);
 
         // Opening a file in Rhino is not a change.
-        var opened = Fixture.Diff(RhinoSnapshot.FromFile(pair.A), RhinoSnapshot.FromDocument(doc), TimeSpan.Zero);
+        using var file = RhinoSnapshot.FromFile(pair.A);
+        using var live = RhinoSnapshot.FromDocument(doc);
+        var opened = Fixture.Diff(file, live, TimeSpan.Zero);
         Assert.True(opened.Rows == 0, DiffJson.Serialize(opened.Result with { Matches = [], TableMatches = [] }));
-        Assert.Equal(doc.Layers.CurrentLayer.Id, RhinoSnapshot.FromDocument(doc).Model.CurrentLayerId);
+        Assert.Equal(doc.Layers.CurrentLayer.Id, live.Model.CurrentLayerId);
+        Assert.Equal(doc.ModelAngleToleranceRadians, live.Model.Info.AngleTolerance);
+        Assert.Equal(doc.ModelAngleToleranceRadians, file.Model.Info.AngleTolerance);
 
         var wall = doc.Objects.FindByUserString(Model.TruthKey, "wall-0", true).Single();
         doc.Objects.Transform(wall, Transform.Translation(0, 250, 0), true);
         var (lastSave, current) = RhinoSnapshot.DocumentVsLastSave(doc);
+        using var _1 = lastSave;
+        using var _2 = current;
         var r = Fixture.Diff(lastSave, current, TimeSpan.Zero).Result;
         Assert.Equal("A.3dm (last save)", r.A.Source);
         Assert.Equal(new PropertyChange(PropertyKind.Transform, null, null, "moved 250 mm in Y"), Assert.Single(r.ChangeSets).Change);

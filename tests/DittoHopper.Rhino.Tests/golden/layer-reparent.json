@@ -4,6 +4,7 @@
     "source": "A.3dm",
     "units": "millimeters",
     "absoluteTolerance": 0.01,
+    "angleTolerance": 0.017453292519943295,
     "hashGrid": 0.01,
     "skipped": []
   },
@@ -11,6 +12,7 @@
     "source": "B.3dm",
     "units": "millimeters",
     "absoluteTolerance": 0.01,
+    "angleTolerance": 0.017453292519943295,
     "hashGrid": 0.01,
     "skipped": []
   },

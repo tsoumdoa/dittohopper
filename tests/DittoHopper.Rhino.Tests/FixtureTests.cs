@@ -243,7 +243,7 @@ public sealed class FixtureTests(RhinoHost host, ITestOutputHelper output)
             }),
             0, "Data-only");
         Assert.All(run.Result.Geometry, g => Assert.Equal(GeometryLevel.DataOnly, g.Level));
-        Assert.Equal(["NURBS ↔ polyline", "knots added", "rebuilt"], run.Result.Geometry.Select(g => g.Detail!).Order(StringComparer.Ordinal));
+        Assert.Equal(["knots added", "line ↔ NURBS", "rebuilt"], run.Result.Geometry.Select(g => g.Detail!).Order(StringComparer.Ordinal));
     });
 
     [RhinoFact]

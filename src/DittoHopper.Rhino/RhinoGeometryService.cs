@@ -4,11 +4,15 @@ using Rhino.Geometry;
 namespace DittoHopper.Rhino;
 
 /// <summary>
-/// Answers the geometry ladder's questions from two snapshots' geometry. Deviation is two-sided: samples on
-/// each shape are measured to the other (Greville points and the spans between them, so a moved control
-/// point is seen), plus Rhino's curve-to-curve distance and, for Breps, the naked edges, so a removed face or
-/// a new hole can't hide inside the other shape. Types with no shape to sample (text, dots, hatches) compare
-/// their canonical hash after the move. Each pair's geometry is touched by one call at a time.
+/// Answers the geometry ladder's questions from two snapshots' geometry. A deviation is only reported when
+/// the two shapes also have the same topology summary (closed or solid, boundary-loop count) and the same
+/// length, area and volume within a tolerance-scaled bound; otherwise the pair is not the same shape. The
+/// deviation itself is two-sided: samples on each shape are measured to the other. Samples cover every
+/// non-empty knot span and the Greville points (where each control point pulls hardest); when that needs more
+/// samples than the budget, the shape is not measured, so the ladder never claims Data-only or Moved on a
+/// guess. Breps also compare their naked edges, so a removed face or a new hole can't hide inside the other
+/// shape. Types with no shape to sample (text, dots, hatches, lights) compare their canonical hash after the
+/// move. Each pair's geometry is touched by one call at a time.
 /// </summary>
 public sealed class RhinoGeometryService : IGeometryService
 {
@@ -24,6 +28,8 @@ public sealed class RhinoGeometryService : IGeometryService
         this.b = b;
         scale = Units.MetersPer(a.Model.Info.Units) is double ma && Units.MetersPer(b.Model.Info.Units) is double mb ? mb / ma : 1;
         tolerance = a.Model.Info.AbsoluteTolerance;
+        _ = a.Geometry; // throws if either snapshot was disposed
+        _ = b.Geometry;
     }
 
     public ShapeDeviation? Deviation(Guid ia, Guid ib, Xform? moveA, double tolerance)
@@ -34,14 +40,19 @@ public sealed class RhinoGeometryService : IGeometryService
         using var scaledB = scale == 1 ? null : Transformed(eb.Geometry, Transform.Scale(Point3d.Origin, scale));
         var x = movedA ?? ea.Geometry;
         var y = scaledB ?? eb.Geometry;
-        return Measure.Deviation(x, y, tolerance) ?? SameHash(x, eb.Hash);
+        if (Measure.Deviation(x, y, tolerance) is not { } d)
+            return SameHash(x, eb.Signature.Hash);
+        // Measures don't change under a rigid move; B's scale into A's units.
+        var sb = eb.Signature;
+        var measuresB = (sb.Length * scale, sb.Area * scale * scale, sb.Volume * scale * scale * scale);
+        return Measure.SameSummary(x, (ea.Signature.Length, ea.Signature.Area, ea.Signature.Volume), y, measuresB, tolerance) ? d : null;
     }
 
     public PointCorrespondence? CorrespondingPoints(Guid ia, Guid ib)
     {
         if (!a.Geometry.TryGetValue(ia, out var ea) || !b.Geometry.TryGetValue(ib, out var eb))
             return null;
-        // Frames of text and hatches need one arm length on both sides; A's size sets it.
+        // Frames of text, hatches and lights need one arm length on both sides; A's size sets it.
         var box = ea.Geometry.GetBoundingBox(true);
         double arm = Math.Max(box.IsValid ? box.Diagonal.Length : 1, 1);
         var pa = Measure.Points(ea.Geometry, arm);
@@ -68,7 +79,7 @@ public sealed class RhinoGeometryService : IGeometryService
         };
     }
 
-    /// <summary>For text, dots, hatches and other unsampled types: equal canonical hashes on B's grid mean the same thing.</summary>
+    /// <summary>For text, dots, hatches, lights and anything unsampled: equal canonical hashes on B's grid mean the same thing.</summary>
     private ShapeDeviation? SameHash(GeometryBase x, ulong hashB)
     {
         using var inB = scale == 1 ? null : Transformed(x, Transform.Scale(Point3d.Origin, 1 / scale));
@@ -92,11 +103,14 @@ public sealed class RhinoGeometryService : IGeometryService
     }
 }
 
-/// <summary>Sampling and structure helpers behind <see cref="RhinoGeometryService"/>.</summary>
+/// <summary>Sampling, summaries and structure helpers behind <see cref="RhinoGeometryService"/>.</summary>
 internal static class Measure
 {
-    private const int MinSamples = 5, MaxSamples = 81;
+    private const int MinSamples = 5;
+    /// <summary>Sample budgets: per curve or surface direction, and per face grid. Beyond them a shape isn't measured.</summary>
+    private const int MaxPerDirection = 1000, MaxPerFace = 40_000;
 
+    /// <summary>Two-sided deviation; null for types that aren't sampled or shapes that would exceed the budget.</summary>
     public static ShapeDeviation? Deviation(GeometryBase x, GeometryBase y, double tol) => (x, y) switch
     {
         (Point p, Point q) => new ShapeDeviation(p.Location.DistanceTo(q.Location)),
@@ -106,6 +120,54 @@ internal static class Measure
         (Mesh m, Mesh n) => Meshes(m, n, tol),
         _ => Breps(x, y, tol),
     };
+
+    /// <summary>
+    /// The same shape must have the same topology summary and nearly the same measures. Lengths may differ by
+    /// 2·tol + 1e-4·L; areas by tol·(2·boundary + 8·√A) + 1e-6·A, since moving a surface by up to tol changes
+    /// its area through its boundary and its curvature; volumes by 2·tol·A + 1e-6·V.
+    /// </summary>
+    public static bool SameSummary(GeometryBase x, (double Length, double Area, double Volume) mx,
+        GeometryBase y, (double Length, double Area, double Volume) my, double tol)
+    {
+        if (Summary(x, tol) is not { } sx || Summary(y, tol) is not { } sy)
+            return true;   // points, clouds and the like have no topology to compare
+        if (sx.Closed != sy.Closed || sx.Loops != sy.Loops)
+            return false;
+        double boundary = Math.Max(sx.Boundary, sy.Boundary), area = Math.Max(mx.Area, my.Area);
+        return Math.Abs(mx.Length - my.Length) <= 2 * tol + 1e-4 * Math.Max(mx.Length, my.Length)
+            && Math.Abs(mx.Area - my.Area) <= tol * (2 * boundary + 8 * Math.Sqrt(area)) + 1e-6 * area
+            && Math.Abs(mx.Volume - my.Volume) <= 2 * tol * area + 1e-6 * Math.Max(mx.Volume, my.Volume);
+    }
+
+    /// <summary>Closed (or solid), number of boundary loops, and total boundary length; null for types without topology.</summary>
+    private static (bool Closed, int Loops, double Boundary)? Summary(GeometryBase g, double tol)
+    {
+        switch (g)
+        {
+            case Curve c:
+                return (c.IsClosed, 0, 0);
+            case Mesh m:
+                var naked = m.GetNakedEdges() ?? [];
+                return (m.IsClosed, naked.Length, naked.Sum(p => p.Length));
+            default:
+                using (AsBrep(g, out var brep))
+                {
+                    if (brep is null) return null;
+                    var edges = brep.DuplicateNakedEdgeCurves(true, true) ?? [];
+                    try
+                    {
+                        var loops = edges.Length == 0 ? [] : Curve.JoinCurves(edges, tol) ?? [];
+                        int count = loops.Length;
+                        foreach (var l in loops) l.Dispose();
+                        return (brep.IsSolid, count, edges.Sum(e => e.GetLength()));
+                    }
+                    finally
+                    {
+                        foreach (var e in edges) e.Dispose();
+                    }
+                }
+        }
+    }
 
     /// <summary>Points that move with the shape, index by index: control points, vertices or a frame.</summary>
     public static IReadOnlyList<Point3d>? Points(GeometryBase g, double arm)
@@ -117,6 +179,7 @@ internal static class Measure
             case TextDot d: return [d.Point];
             case AnnotationBase t: return Frame(t.Plane, arm);
             case Hatch h: return Frame(h.Plane, arm);
+            case Light l: return [l.Location, l.Location + l.Direction, l.Location + l.Length, l.Location + l.Width];
             case Curve c:
                 using (var n = c.ToNurbsCurve())
                     return n is null ? null : [.. Enumerable.Range(0, n.Points.Count).Select(i => n.Points[i].Location)];
@@ -140,14 +203,16 @@ internal static class Measure
     }
 
     /// <summary>
-    /// Best effort, from geometric facts first: NURBS ↔ polyline, a closed curve's seam moved, its direction
-    /// flipped; then from structure: same control points (reparameterized, or just within tolerance), knots
-    /// added or removed, else rebuilt.
+    /// Best effort, from geometric facts first: the curve type changed (line ↔ NURBS, NURBS ↔ polyline), a
+    /// closed curve's seam moved, its direction flipped; then from structure: same control points with a new
+    /// domain or knot spacing (reparameterized) or not (within tolerance), knots added or removed, else rebuilt.
     /// </summary>
     public static string CurveReason(Curve c, Curve d, double tol)
     {
         var reasons = new List<string>();
-        if (IsPolyline(c) != IsPolyline(d)) reasons.Add("NURBS ↔ polyline");
+        string tc = TypeLabel(c), td = TypeLabel(d);
+        if (tc != td) reasons.Add($"{tc} ↔ {td}");
+        else if (IsPolyline(c) != IsPolyline(d)) reasons.Add("NURBS ↔ polyline");
         if (c.IsClosed && d.IsClosed && c.PointAtStart.DistanceTo(d.PointAtStart) > tol) reasons.Add("seam moved");
         if (Flipped(c, d)) reasons.Add("direction flipped");
         if (reasons.Count > 0) return string.Join(", ", reasons);
@@ -161,19 +226,32 @@ internal static class Measure
         {
             bool sameCvs = Enumerable.Range(0, nc.Points.Count).All(i => nc.Points[i].Location.DistanceTo(nd.Points[i].Location) <= tol);
             if (!sameCvs) return "rebuilt";
-            return kc.Zip(kd).All(k => Math.Abs(k.First - k.Second) < 1e-9) ? "within tolerance" : "reparameterized";
+            bool sameDomain = Math.Abs(c.Domain.T0 - d.Domain.T0) < 1e-9 && Math.Abs(c.Domain.T1 - d.Domain.T1) < 1e-9;
+            return sameDomain && kc.Zip(kd).All(k => Math.Abs(k.First - k.Second) < 1e-9) ? "within tolerance" : "reparameterized";
         }
         var (fewer, more) = nc.Points.Count < nd.Points.Count ? (kc, kd) : (kd, kc);
         bool superset = fewer.Distinct().All(k => more.Any(m => Math.Abs(m - k) < 1e-9));
         return !superset ? "rebuilt" : nc.Points.Count < nd.Points.Count ? "knots added" : "knots removed";
     }
 
+    private static string TypeLabel(Curve c) => c switch
+    {
+        LineCurve => "line",
+        PolylineCurve => "polyline",
+        ArcCurve => "arc",
+        NurbsCurve => "NURBS",
+        PolyCurve => "polycurve",
+        _ => c.GetType().Name,
+    };
+
     private static ShapeDeviation? Curves(Curve c, Curve d, double tol)
     {
+        if (CurveSamples(c) is not { } sc || CurveSamples(d) is not { } sd)
+            return null;
         double limit = 2 * tol, max = 0, sum = 0;
         int n = 0;
-        foreach (var (from, to) in new[] { (c, d), (d, c) })
-            foreach (var p in CurveSamples(from))
+        foreach (var (from, to) in new[] { (sc, d), (sd, c) })
+            foreach (var p in from)
             {
                 if (!to.ClosestPoint(p, out double t, limit)) return new ShapeDeviation(limit);
                 double dist = p.DistanceTo(to.PointAt(t));
@@ -201,17 +279,18 @@ internal static class Measure
         return new ShapeDeviation(max, count > 0 ? sum / count : null);
     }
 
-    /// <summary>Surfaces, polysurfaces, extrusions and SubDs, compared as Breps. Null for anything else.</summary>
+    /// <summary>Surfaces, polysurfaces, extrusions and SubDs, compared as Breps. Null for anything else, or over budget.</summary>
     private static ShapeDeviation? Breps(GeometryBase x, GeometryBase y, double tol)
     {
         using var ownedX = AsBrep(x, out var bx);
         using var ownedY = AsBrep(y, out var by);
-        if (bx is null || by is null) return null;
+        if (bx is null || by is null || BrepSamples(bx) is not { } sx || BrepSamples(by) is not { } sy)
+            return null;
 
         double limit = 2 * tol, max = 0, sum = 0;
         int n = 0;
-        foreach (var (from, to) in new[] { (bx, by), (by, bx) })
-            foreach (var p in BrepSamples(from))
+        foreach (var (from, to) in new[] { (sx, by), (sy, bx) })
+            foreach (var p in from)
             {
                 if (!to.ClosestPoint(p, out var cp, out _, out _, out _, limit, out _)) return new ShapeDeviation(limit);
                 double dist = p.DistanceTo(cp);
@@ -224,13 +303,17 @@ internal static class Measure
         try
         {
             foreach (var (from, to) in new[] { (nakedX, nakedY), (nakedY, nakedX) })
-                foreach (var p in from.SelectMany(CurveSamples))
+                foreach (var e in from)
                 {
-                    double best = double.PositiveInfinity;
-                    foreach (var e in to)
-                        if (e.ClosestPoint(p, out double t, limit)) best = Math.Min(best, p.DistanceTo(e.PointAt(t)));
-                    if (best > limit) return new ShapeDeviation(limit);
-                    max = Math.Max(max, best);
+                    if (CurveSamples(e) is not { } samples) return null;
+                    foreach (var p in samples)
+                    {
+                        double best = double.PositiveInfinity;
+                        foreach (var other in to)
+                            if (other.ClosestPoint(p, out double t, limit)) best = Math.Min(best, p.DistanceTo(other.PointAt(t)));
+                        if (best > limit) return new ShapeDeviation(limit);
+                        max = Math.Max(max, best);
+                    }
                 }
         }
         finally
@@ -254,38 +337,47 @@ internal static class Measure
         return ReferenceEquals(brep, g) ? null : brep;
     }
 
-    /// <summary>Per face, a grid at the Greville parameters and halfway between them, inside the trims; plus each edge.</summary>
-    private static IEnumerable<Point3d> BrepSamples(Brep brep)
+    /// <summary>Per face, a grid covering every knot span and Greville point, inside the trims; plus each edge. Null when over budget.</summary>
+    private static List<Point3d>? BrepSamples(Brep brep)
     {
+        var samples = new List<Point3d>();
         foreach (var face in brep.Faces)
         {
             using var n = face.UnderlyingSurface().ToNurbsSurface();
-            if (n is null) continue;
-            var us = Spread(Enumerable.Range(0, n.Points.CountU).Select(i => n.Points.GetGrevillePoint(i, 0).X), n.Domain(0), face.Domain(0));
-            var vs = Spread(Enumerable.Range(0, n.Points.CountV).Select(j => n.Points.GetGrevillePoint(0, j).Y), n.Domain(1), face.Domain(1));
+            if (n is null) return null;
+            var us = Spread(Enumerable.Range(0, n.Points.CountU).Select(i => n.Points.GetGrevillePoint(i, 0).X),
+                Enumerable.Range(0, n.KnotsU.Count).Select(i => n.KnotsU[i]), n.Domain(0), face.Domain(0));
+            var vs = Spread(Enumerable.Range(0, n.Points.CountV).Select(j => n.Points.GetGrevillePoint(0, j).Y),
+                Enumerable.Range(0, n.KnotsV.Count).Select(i => n.KnotsV[i]), n.Domain(1), face.Domain(1));
+            if (us is null || vs is null || us.Count * vs.Count > MaxPerFace) return null;
             foreach (double u in us)
                 foreach (double v in vs)
                     if (face.IsPointOnFace(u, v) != PointFaceRelation.Exterior)
-                        yield return face.PointAt(u, v);
+                        samples.Add(face.PointAt(u, v));
         }
         foreach (var edge in brep.Edges)
-            foreach (var p in CurveSamples(edge))
-                yield return p;
+        {
+            if (CurveSamples(edge) is not { } e) return null;
+            samples.AddRange(e);
+        }
+        return samples;
     }
 
-    private static IEnumerable<Point3d> CurveSamples(Curve c)
+    /// <summary>Samples covering every knot span and Greville point of the curve; null when over budget.</summary>
+    private static List<Point3d>? CurveSamples(Curve c)
     {
         using var n = c.ToNurbsCurve();
-        if (n is null) yield break;
-        foreach (double t in Spread(n.GrevilleParameters(), n.Domain, n.Domain))
-            yield return n.PointAt(t);
+        if (n is null) return null;
+        var ts = Spread(n.GrevilleParameters(), Enumerable.Range(0, n.Knots.Count).Select(i => n.Knots[i]), n.Domain, n.Domain);
+        return ts is null ? null : [.. ts.Select(n.PointAt)];
     }
 
     /// <summary>
-    /// Parameters at the Greville abscissae (where each control point pulls hardest) and halfway between, mapped
-    /// from the NURBS domain onto the target domain; evenly spaced when there are too few or too many.
+    /// Normalized parameters at the Greville abscissae and halfway between them, plus each non-empty knot span's
+    /// ends and middle, so a control point moved anywhere is sampled where it pulls; at least a few evenly
+    /// spaced ones. Mapped from the NURBS domain onto the target domain. Null when the budget can't cover them.
     /// </summary>
-    private static List<double> Spread(IEnumerable<double> greville, Interval from, Interval to)
+    private static List<double>? Spread(IEnumerable<double> greville, IEnumerable<double> knots, Interval from, Interval to)
     {
         var g = greville.Select(from.NormalizedParameterAt).Order().ToList();
         var r = new List<double>();
@@ -294,12 +386,13 @@ internal static class Measure
             if (i > 0) r.Add((g[i - 1] + g[i]) / 2);
             r.Add(g[i]);
         }
-        if (r.Count < MinSamples || r.Count > MaxSamples)
-        {
-            int count = Math.Clamp(r.Count, MinSamples, MaxSamples);
-            r = [.. Enumerable.Range(0, count).Select(i => i / (count - 1.0))];
-        }
-        return [.. r.Select(to.ParameterAt)];
+        var k = knots.Select(from.NormalizedParameterAt).ToList();
+        for (int i = 0; i + 1 < k.Count; i++)
+            if (k[i + 1] - k[i] > 1e-12)
+                r.AddRange([k[i], (k[i] + k[i + 1]) / 2, k[i + 1]]);
+        r.AddRange(Enumerable.Range(0, MinSamples).Select(i => i / (MinSamples - 1.0)));
+        var distinct = r.Where(t => t is >= 0 and <= 1).Order().Distinct().ToList();
+        return distinct.Count > MaxPerDirection ? null : [.. distinct.Select(to.ParameterAt)];
     }
 
     private static List<Point3d> BrepPoints(Brep brep) =>

@@ -17,8 +17,8 @@ internal static class Fixture
     public static FixtureRun Run(FixturePair pair, DiffSettings? settings = null)
     {
         var clock = Stopwatch.StartNew();
-        var a = RhinoSnapshot.FromFile(pair.A);
-        var b = RhinoSnapshot.FromFile(pair.B);
+        using var a = RhinoSnapshot.FromFile(pair.A);
+        using var b = RhinoSnapshot.FromFile(pair.B);
         return Diff(a, b, clock.Elapsed, settings);
     }
 
@@ -86,7 +86,12 @@ internal static class Fixture
                     LinetypeId = Id(l.LinetypeId),
                     MaterialId = Id(l.MaterialId),
                 })],
-                Blocks = [.. s.Blocks.Select(x => x with { Id = Id(x.Id), Nested = [.. x.Nested.Select(n => n with { DefinitionId = Id(n.DefinitionId) })] })],
+                Blocks = [.. s.Blocks.Select(x => x with
+                {
+                    Id = Id(x.Id),
+                    Nested = [.. x.Nested.Select(n => n with { DefinitionId = Id(n.DefinitionId) })],
+                    Members = [.. x.Members.Select(m => m with { LayerId = Id(m.LayerId) })],
+                })],
                 Materials = [.. s.Materials.Select(x => x with { Id = Id(x.Id) })],
                 Linetypes = [.. s.Linetypes.Select(x => x with { Id = Id(x.Id) })],
                 Groups = [.. s.Groups.Select(x => x with { Id = Id(x.Id) })],
