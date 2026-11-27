@@ -3,7 +3,7 @@ using Xunit;
 namespace DittoHopper.Core.Tests;
 
 /// <summary>
-/// Compares a result's JSON with tests/DittoHopper.Core.Tests/golden/&lt;name&gt;.json.
+/// Compares a result's JSON with tests/&lt;test project&gt;/golden/&lt;name&gt;.json. Shared by the Core and Rhino tests.
 /// Set DITTOHOPPER_UPDATE_GOLDEN=1 to (re)write the files instead, then review the diff before committing.
 /// </summary>
 internal static class Golden
@@ -28,7 +28,7 @@ internal static class Golden
     {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
             if (File.Exists(Path.Combine(dir.FullName, "DittoHopper.sln")))
-                return Path.Combine(dir.FullName, "tests", "DittoHopper.Core.Tests", "golden");
+                return Path.Combine(dir.FullName, "tests", typeof(Golden).Assembly.GetName().Name!, "golden");
         throw new InvalidOperationException("Can't find the repository root (DittoHopper.sln) above the test binaries.");
     }
 }

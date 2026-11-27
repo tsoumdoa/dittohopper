@@ -1,0 +1,216 @@
+{
+  "format": 1,
+  "a": {
+    "source": "A.3dm",
+    "units": "millimeters",
+    "absoluteTolerance": 0.01,
+    "hashGrid": 0.01,
+    "skipped": []
+  },
+  "b": {
+    "source": "B.3dm",
+    "units": "millimeters",
+    "absoluteTolerance": 0.01,
+    "hashGrid": 0.01,
+    "skipped": []
+  },
+  "header": {
+    "units": "millimeters",
+    "tolerance": 0.01,
+    "hashGridsMatch": true,
+    "notes": []
+  },
+  "settings": {
+    "stableKey": "diff:uid",
+    "layerInferShare": 0.6,
+    "toggles": {
+      "placement": true,
+      "shape": true,
+      "layer": true,
+      "blockDefinition": true,
+      "groupMembership": true,
+      "displayOrder": false,
+      "color": true,
+      "material": true,
+      "linetype": true,
+      "printWidth": false,
+      "name": true,
+      "userText": true
+    }
+  },
+  "tableMatches": [
+    {
+      "table": "layer",
+      "a": "00000000-0000-0000-0000-000000000001",
+      "b": "00000000-0000-0000-0000-000000000018",
+      "by": "path",
+      "confidence": 1
+    },
+    {
+      "table": "layer",
+      "a": "00000000-0000-0000-0000-000000000002",
+      "b": "00000000-0000-0000-0000-000000000019",
+      "by": "path",
+      "confidence": 1
+    },
+    {
+      "table": "block",
+      "a": "00000000-0000-0000-0000-000000000003",
+      "b": "00000000-0000-0000-0000-00000000001a",
+      "by": "name",
+      "confidence": 1
+    }
+  ],
+  "tableEvents": [
+    {
+      "id": "ev-5702d7149832e093",
+      "table": "layer",
+      "kind": "added",
+      "b": "00000000-0000-0000-0000-000000000017",
+      "label": "Unrelated",
+      "shares": [],
+      "inferred": false,
+      "confidence": 1,
+      "affectedObjects": 0,
+      "review": "unreviewed"
+    }
+  ],
+  "matches": [
+    {
+      "a": "00000000-0000-0000-0000-000000000004",
+      "b": "00000000-0000-0000-0000-00000000001b",
+      "by": "geometryHash",
+      "confidence": 0.99,
+      "unchangedProperties": 7
+    },
+    {
+      "a": "00000000-0000-0000-0000-000000000005",
+      "b": "00000000-0000-0000-0000-00000000001c",
+      "by": "geometryHash",
+      "confidence": 0.99,
+      "unchangedProperties": 7
+    },
+    {
+      "a": "00000000-0000-0000-0000-000000000006",
+      "b": "00000000-0000-0000-0000-00000000001d",
+      "by": "geometryHash",
+      "confidence": 0.99,
+      "unchangedProperties": 7
+    },
+    {
+      "a": "00000000-0000-0000-0000-000000000007",
+      "b": "00000000-0000-0000-0000-00000000001e",
+      "by": "geometryHash",
+      "confidence": 0.99,
+      "unchangedProperties": 7
+    },
+    {
+      "a": "00000000-0000-0000-0000-000000000008",
+      "b": "00000000-0000-0000-0000-00000000001f",
+      "by": "geometryHash",
+      "confidence": 0.99,
+      "unchangedProperties": 7
+    },
+    {
+      "a": "00000000-0000-0000-0000-000000000009",
+      "b": "00000000-0000-0000-0000-000000000020",
+      "by": "geometryHash",
+      "confidence": 0.99,
+      "unchangedProperties": 7
+    },
+    {
+      "a": "00000000-0000-0000-0000-00000000000a",
+      "b": "00000000-0000-0000-0000-000000000021",
+      "by": "geometryHash",
+      "confidence": 0.99,
+      "unchangedProperties": 7
+    },
+    {
+      "a": "00000000-0000-0000-0000-00000000000b",
+      "b": "00000000-0000-0000-0000-000000000022",
+      "by": "geometryHash",
+      "confidence": 0.99,
+      "unchangedProperties": 7
+    },
+    {
+      "a": "00000000-0000-0000-0000-00000000000c",
+      "b": "00000000-0000-0000-0000-000000000023",
+      "by": "geometryHash",
+      "confidence": 0.99,
+      "unchangedProperties": 7
+    },
+    {
+      "a": "00000000-0000-0000-0000-00000000000d",
+      "b": "00000000-0000-0000-0000-000000000024",
+      "by": "geometryHash",
+      "confidence": 0.99,
+      "unchangedProperties": 7
+    },
+    {
+      "a": "00000000-0000-0000-0000-00000000000e",
+      "b": "00000000-0000-0000-0000-000000000025",
+      "by": "geometryHash",
+      "confidence": 0.99,
+      "unchangedProperties": 7
+    },
+    {
+      "a": "00000000-0000-0000-0000-00000000000f",
+      "b": "00000000-0000-0000-0000-000000000026",
+      "by": "geometryHash",
+      "confidence": 0.99,
+      "unchangedProperties": 7
+    },
+    {
+      "a": "00000000-0000-0000-0000-000000000010",
+      "b": "00000000-0000-0000-0000-000000000027",
+      "by": "geometryHash",
+      "confidence": 0.99,
+      "unchangedProperties": 7
+    },
+    {
+      "a": "00000000-0000-0000-0000-000000000011",
+      "b": "00000000-0000-0000-0000-000000000028",
+      "by": "geometryHash",
+      "confidence": 0.99,
+      "unchangedProperties": 7
+    },
+    {
+      "a": "00000000-0000-0000-0000-000000000012",
+      "b": "00000000-0000-0000-0000-000000000029",
+      "by": "geometryHash",
+      "confidence": 0.99,
+      "unchangedProperties": 7
+    },
+    {
+      "a": "00000000-0000-0000-0000-000000000013",
+      "b": "00000000-0000-0000-0000-00000000002a",
+      "by": "geometryHash",
+      "confidence": 0.99,
+      "unchangedProperties": 7
+    },
+    {
+      "a": "00000000-0000-0000-0000-000000000014",
+      "b": "00000000-0000-0000-0000-00000000002b",
+      "by": "geometryHash",
+      "confidence": 0.99,
+      "unchangedProperties": 7
+    },
+    {
+      "a": "00000000-0000-0000-0000-000000000015",
+      "b": "00000000-0000-0000-0000-00000000002c",
+      "by": "geometryHash",
+      "confidence": 0.99,
+      "unchangedProperties": 7
+    },
+    {
+      "a": "00000000-0000-0000-0000-000000000016",
+      "b": "00000000-0000-0000-0000-00000000002d",
+      "by": "geometryHash",
+      "confidence": 0.99,
+      "unchangedProperties": 8
+    }
+  ],
+  "geometry": [],
+  "changeSets": [],
+  "unchangedObjects": 19
+}

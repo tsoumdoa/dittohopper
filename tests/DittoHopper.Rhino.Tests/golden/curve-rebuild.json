@@ -1,0 +1,102 @@
+{
+  "format": 1,
+  "a": {
+    "source": "A.3dm",
+    "units": "millimeters",
+    "absoluteTolerance": 0.01,
+    "hashGrid": 0.01,
+    "skipped": []
+  },
+  "b": {
+    "source": "B.3dm",
+    "units": "millimeters",
+    "absoluteTolerance": 0.01,
+    "hashGrid": 0.01,
+    "skipped": []
+  },
+  "header": {
+    "units": "millimeters",
+    "tolerance": 0.01,
+    "hashGridsMatch": true,
+    "notes": []
+  },
+  "settings": {
+    "stableKey": "diff:uid",
+    "layerInferShare": 0.6,
+    "toggles": {
+      "placement": true,
+      "shape": true,
+      "layer": true,
+      "blockDefinition": true,
+      "groupMembership": true,
+      "displayOrder": false,
+      "color": true,
+      "material": true,
+      "linetype": true,
+      "printWidth": false,
+      "name": true,
+      "userText": true
+    }
+  },
+  "tableMatches": [
+    {
+      "table": "layer",
+      "a": "00000000-0000-0000-0000-000000000001",
+      "b": "00000000-0000-0000-0000-000000000001",
+      "by": "id",
+      "confidence": 1
+    }
+  ],
+  "tableEvents": [],
+  "matches": [
+    {
+      "a": "00000000-0000-0000-0000-000000000002",
+      "b": "00000000-0000-0000-0000-000000000002",
+      "by": "guid",
+      "confidence": 1,
+      "unchangedProperties": 7
+    },
+    {
+      "a": "00000000-0000-0000-0000-000000000003",
+      "b": "00000000-0000-0000-0000-000000000003",
+      "by": "guid",
+      "confidence": 1,
+      "unchangedProperties": 7
+    },
+    {
+      "a": "00000000-0000-0000-0000-000000000004",
+      "b": "00000000-0000-0000-0000-000000000004",
+      "by": "guid",
+      "confidence": 1,
+      "unchangedProperties": 7
+    }
+  ],
+  "geometry": [
+    {
+      "a": "00000000-0000-0000-0000-000000000002",
+      "b": "00000000-0000-0000-0000-000000000002",
+      "level": "dataOnly",
+      "detail": "rebuilt",
+      "maxDeviation": 0.00651,
+      "meanDeviation": 0.00044
+    },
+    {
+      "a": "00000000-0000-0000-0000-000000000003",
+      "b": "00000000-0000-0000-0000-000000000003",
+      "level": "dataOnly",
+      "detail": "knots added",
+      "maxDeviation": 0,
+      "meanDeviation": 0
+    },
+    {
+      "a": "00000000-0000-0000-0000-000000000004",
+      "b": "00000000-0000-0000-0000-000000000004",
+      "level": "dataOnly",
+      "detail": "NURBS ↔ polyline",
+      "maxDeviation": 0,
+      "meanDeviation": 0
+    }
+  ],
+  "changeSets": [],
+  "unchangedObjects": 3
+}

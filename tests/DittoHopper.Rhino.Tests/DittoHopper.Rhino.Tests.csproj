@@ -10,6 +10,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/DittoHopper.Rhino/DittoHopper.Rhino.csproj" />
+    <Compile Include="../DittoHopper.Core.Tests/Golden.cs" Link="Golden.cs" />
     <PackageReference Include="RhinoCommon" Version="$(RhinoApiVersion)" ExcludeAssets="runtime" />
     <Reference Update="RhinoCommon"><Private>false</Private></Reference>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
