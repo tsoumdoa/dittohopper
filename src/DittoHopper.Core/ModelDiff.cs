@@ -93,6 +93,10 @@ internal sealed class DiffContext
     /// </summary>
     public readonly bool HashProvesUnchanged;
 
+    /// <summary>Ladder step 1: the same kind and the same canonical hash, on matching grids.</summary>
+    public bool SameGeometryHash(ObjectRecord a, ObjectRecord b) =>
+        Header.HashGridsMatch && a.Kind == b.Kind && a.Geometry.Hash == b.Geometry.Hash;
+
     public IEnumerable<TableMap> AllTableMaps => [Layers, Blocks, Materials, Linetypes, Groups];
 
     public double Tolerance => Header.Tolerance;

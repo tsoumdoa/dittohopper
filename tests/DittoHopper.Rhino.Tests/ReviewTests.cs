@@ -15,7 +15,7 @@ namespace DittoHopper.Rhino.Tests;
 public sealed class ReviewTests(RhinoHost host)
 {
     /// <summary>Diffs one object in two in-memory files, paired by stable key.</summary>
-    private static DiffResult Compare(GeometryBase a, GeometryBase b, DiffSettings? settings = null)
+    private static DiffResult Compare(GeometryBase a, GeometryBase b, DiffSettings? settings = null, bool stableKey = true)
     {
         using var af = new File3dm();
         using var bf = new File3dm();
@@ -25,7 +25,7 @@ public sealed class ReviewTests(RhinoHost host)
             Model.Layer(f, "Base");
         }
         var at = Model.Attr(0, "x");
-        at.SetUserString("diff:uid", "same");
+        if (stableKey) at.SetUserString("diff:uid", "same");
         Model.Add(af, a, at);
         Model.Add(bf, b, at);
         using var sa = RhinoSnapshot.FromFile(af, "A");
@@ -90,20 +90,126 @@ public sealed class ReviewTests(RhinoHost host)
         Assert.Equal(GeometryLevel.Moved, Level(Compare(new Point(Point3d.Origin), new Point(new Point3d(0.009, 0.009, 0))))));
 
     [RhinoFact]
-    public void ACurveTypeOrDomainChangeIsDataOnlyWithAReason() => host.Run(() =>
+    public void ARepresentationChangeIsDataOnlyAndStillMatchesByHash() => host.Run(() =>
     {
         var line = new LineCurve(Point3d.Origin, new Point3d(100, 0, 0));
         var nurbs = line.ToNurbsCurve();
-        nurbs.Domain = new Interval(40, 80);
-        var r = Compare(line, nurbs);
-        var g = Assert.Single(r.Geometry);
-        Assert.Equal((GeometryLevel.DataOnly, "line ↔ NURBS"), (g.Level, g.Detail));
-        Assert.Empty(r.ChangeSets);
-
         var shifted = nurbs.DuplicateCurve();
         shifted.Domain = new Interval(0, 1);
-        var d = Assert.Single(Compare(nurbs, shifted).Geometry);
-        Assert.Equal((GeometryLevel.DataOnly, "reparameterized"), (d.Level, d.Detail));
+        foreach (bool stable in new[] { true, false })
+        {
+            var r = Compare(line, nurbs, stableKey: stable);
+            Assert.Equal(stable ? MatchedBy.StableKey : MatchedBy.GeometryHash, Assert.Single(r.Matches).By);
+            Assert.Equal((GeometryLevel.DataOnly, "line ↔ NURBS"), (Level(r), r.Geometry[0].Detail));
+            Assert.Empty(r.ChangeSets);
+            var d = Compare(nurbs, shifted, stableKey: stable);
+            Assert.Equal((GeometryLevel.DataOnly, "reparameterized"), (Level(d), d.Geometry[0].Detail));
+            Assert.Empty(d.ChangeSets);
+        }
+    });
+
+    [RhinoFact]
+    public void TheSameLineInMillimetresAndMetresMatchesByHashWithNoEntry() => host.Run(() =>
+    {
+        using var mm = new File3dm();
+        using var m = new File3dm();
+        Model.Setup(mm);
+        Model.Setup(m);
+        m.Settings.ModelUnitSystem = global::Rhino.UnitSystem.Meters;
+        m.Settings.ModelAbsoluteTolerance = 0.00001;
+        Model.Add(mm, new LineCurve(Point3d.Origin, new Point3d(1000, 0, 0)), Model.Layer(mm, "L"), "line");
+        Model.Add(m, new LineCurve(Point3d.Origin, new Point3d(1, 0, 0)), Model.Layer(m, "L", keepId: false), "line");
+        using var a = RhinoSnapshot.FromFile(mm, "mm");
+        using var b = RhinoSnapshot.FromFile(m, "m");
+        var r = RhinoDiff.Diff(a, b);
+        Assert.Equal(MatchedBy.GeometryHash, Assert.Single(r.Matches).By);
+        Assert.Empty(r.Geometry);
+        Assert.Empty(r.ChangeSets);
+    });
+
+    [RhinoFact]
+    public void ABlockMembersDomainOnlyChangeIsNotAContentChange() => host.Run(() =>
+    {
+        var r = Fixture.Run(FixturePair.CreateFromScratch("member-domain", f => Member(f, new Interval(0, 100)), f => Member(f, new Interval(0, 1)))).Result;
+        Assert.Empty(r.TableEvents);
+        Assert.Empty(r.ChangeSets);
+
+        static void Member(File3dm f, Interval domain)
+        {
+            Model.Setup(f);
+            int l = Model.Layer(f, "L");
+            var line = new LineCurve(Point3d.Origin, new Point3d(100, 0, 0)) { Domain = domain };
+            int block = Model.Block(f, "Mark", [line], [new ObjectAttributes { LayerIndex = l }]);
+            var at = Model.Attr(l, "mark");
+            at.SetUserString("diff:uid", "mark");
+            f.Objects.AddInstanceObject(block, Transform.Identity, at);
+        }
+    });
+
+    /// <summary>A 100×100 quad ring around a 10×10 hole whose low corner is at (low, low).</summary>
+    private static Mesh Ring(int low)
+    {
+        var m = new Mesh();
+        foreach (var (x, y) in new[] { (0, 0), (100, 0), (100, 100), (0, 100), (low, low), (low + 10, low), (low + 10, low + 10), (low, low + 10) })
+            m.Vertices.Add(x, y, 0);
+        for (int i = 0; i < 4; i++) m.Faces.AddFace(i, (i + 1) % 4, (i + 1) % 4 + 4, i + 4);
+        return m;
+    }
+
+    [RhinoFact]
+    public void AHoleMovedWithinAMeshIsNotDataOnly() => host.Run(() =>
+    {
+        Assert.Equal(GeometryLevel.Unclassified, Level(Compare(Ring(20), Ring(70))));
+        var moved = Ring(20);
+        moved.Translate(5, 3, 0);
+        Assert.Equal(GeometryLevel.Moved, Level(Compare(Ring(20), moved)));
+    });
+
+    /// <summary>A flat 103×103-control-point panel, too dense to sample within the budget, with an optional bump.</summary>
+    private static Brep Dense(double bump = 0)
+    {
+        var s = NurbsSurface.Create(3, false, 2, 2, 103, 103);
+        s.KnotsU.CreateUniformKnots(1);
+        s.KnotsV.CreateUniformKnots(1);
+        for (int u = 0; u < 103; u++)
+            for (int v = 0; v < 103; v++)
+                s.Points.SetPoint(u, v, new Point3d(10.0 * u, 10.0 * v, u == 5 && v == 5 ? bump : 0));
+        return s.ToBrep();
+    }
+
+    [RhinoFact]
+    public void UnmeasurablePairsUnderAFinerToleranceAreUnclassified() => host.Run(() =>
+    {
+        var fine = new DiffSettings { ShapeTolerance = 0.001 };
+        Assert.Equal(GeometryLevel.Unclassified, Level(Compare(Dense(), Dense(0.002), fine)));
+        var movedBump = Dense(0.002);
+        movedBump.Translate(10, 0, 0);
+        Assert.Equal(GeometryLevel.Unclassified, Level(Compare(Dense(), movedBump, fine)));
+        Assert.Equal(GeometryLevel.Unclassified, Level(Compare(new TextDot("label", Point3d.Origin), new TextDot("label", new Point3d(0.002, 0, 0)), fine)));
+
+        // At the default tolerance the exact hash still proves an over-budget move.
+        var moved = Dense();
+        moved.Translate(10, 0, 0);
+        Assert.Equal(GeometryLevel.Moved, Level(Compare(Dense(), moved)));
+    });
+
+    [RhinoFact]
+    public void BuiltInHatchPatternsHashApartAndLightPowerCounts() => host.Run(() =>
+    {
+        var circle = new ArcCurve(new Circle(Point3d.Origin, 50));
+        var solid = Hatch.Create(circle, HatchPattern.Defaults.Solid.Index, 0, 1, Model.Tolerance)[0];
+        var lines = Hatch.Create(circle, HatchPattern.Defaults.Hatch1.Index, 0, 1, Model.Tolerance)[0];
+        Assert.NotEqual(solid.PatternIndex, lines.PatternIndex);
+        Assert.Equal(PropertyKind.Geometry, Assert.Single(Compare(solid, lines).ChangeSets).Change!.Property);
+
+        using var doc = RhinoDoc.CreateHeadless(null);
+        var light = new Light { LightStyle = LightStyle.WorldPoint, Location = new Point3d(12, 12, 12), Intensity = 0.25 };
+        int index = doc.Lights.Add(light);
+        using var before = RhinoSnapshot.FromDocument(doc, "A");
+        light.AttenuationVector = new Vector3d(0.5, 1, 2);
+        Assert.True(doc.Lights.Modify(index, light));
+        using var after = RhinoSnapshot.FromDocument(doc, "B");
+        Assert.Equal(GeometryLevel.Unclassified, Level(RhinoDiff.Diff(before, after)));
     });
 
     private static void MemberOn(File3dm f, string memberLayer)

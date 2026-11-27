@@ -169,4 +169,24 @@ public class GeometryLadderTests
         Assert.Contains(withoutService.Header.Notes, n => n.Contains("smaller differences are not reported"));
         Assert.DoesNotContain(ModelDiff.Diff(a.Build(), b.Build(), geometry: g).Header.Notes, n => n.Contains("hash grid"));
     }
+
+    [Fact]
+    public void TheSameShapeInAnotherRepresentationIsDataOnly_AndStillMatchesByHash()
+    {
+        var a = new SnapshotBuilder();
+        var line = a.Object(a.Layer("L"));
+        var b = a.Clone();
+        var fresh = b.Rebake(line);                // a new id: only pass 3 can pair it
+        b.Edit(fresh, o => o with { Geometry = o.Geometry with { Representation = 42 } });
+
+        var noService = ModelDiff.Diff(a.Build(), b.Build());
+        Assert.Equal(MatchedBy.GeometryHash, Assert.Single(noService.Matches).By);
+        var change = Assert.Single(noService.Geometry);
+        Assert.Equal((GeometryLevel.DataOnly, "representation changed"), (change.Level, change.Detail));
+        Assert.Empty(noService.ChangeSets);
+
+        var withService = ModelDiff.Diff(a.Build(), b.Build(), geometry: new FakeGeometry());
+        Assert.Equal("rebuilt", Assert.Single(withService.Geometry).Detail);
+        Assert.Empty(withService.ChangeSets);
+    }
 }

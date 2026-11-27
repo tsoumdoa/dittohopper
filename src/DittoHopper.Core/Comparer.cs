@@ -38,7 +38,8 @@ internal sealed class Comparer
     }
 
     /// <summary>
-    /// Geometry ladder steps 2–3 for every pair whose geometry hash differs (step 1), keyed by A id. Only those
+    /// Geometry ladder steps 2–3 for every pair whose geometry hash differs (step 1), or whose hash is equal but
+    /// its representation differs (Data-only by definition), keyed by A id. Only those
     /// pairs pay for deviation sampling, and they run in parallel: each geometry belongs to one pair.
     /// </summary>
     private static Dictionary<Guid, GeometryChange> Ladder(DiffContext ctx, IReadOnlyList<Pair> pairs, IGeometryService? service)
@@ -47,7 +48,8 @@ internal sealed class Comparer
         // Equal hashes prove "unchanged" only when the hash grid is no coarser than the shape tolerance;
         // otherwise a geometry service checks those pairs too.
         bool recheck = service is not null && !ctx.HashProvesUnchanged;
-        var todo = pairs.Where(p => (t.Placement || t.Shape) && !BothInstances(p.A, p.B) && (recheck || !SameHash(ctx, p.A, p.B))).ToArray();
+        var todo = pairs.Where(p => (t.Placement || t.Shape) && !BothInstances(p.A, p.B)
+            && (recheck || !ctx.SameGeometryHash(p.A, p.B) || !SameRepresentation(p.A, p.B))).ToArray();
         var results = new GeometryChange[todo.Length];
         Parallel.For(0, todo.Length, i => results[i] = GeometryLadder.Classify(ctx, service, todo[i].A, todo[i].B));
         return todo.Select((p, i) => (p.A.Id, results[i])).ToDictionary(x => x.Id, x => x.Item2);
@@ -56,8 +58,7 @@ internal sealed class Comparer
     private static bool BothInstances(ObjectRecord a, ObjectRecord b) =>
         a.Kind == ObjectKind.InstanceReference && b.Kind == ObjectKind.InstanceReference;
 
-    private static bool SameHash(DiffContext ctx, ObjectRecord a, ObjectRecord b) =>
-        ctx.Header.HashGridsMatch && a.Kind == b.Kind && a.Geometry.Hash == b.Geometry.Hash;
+    private static bool SameRepresentation(ObjectRecord a, ObjectRecord b) => a.Geometry.Representation == b.Geometry.Representation;
 
     private (int Changed, int Unchanged) Compare(ObjectRecord a, ObjectRecord b)
     {
@@ -141,7 +142,8 @@ internal sealed class Comparer
                         Emit(new PropertyChange(PropertyKind.BlockContent, sb.BlockLabel(inner), null, null), ev, inner.ToString());
             }
         }
-        else if (ladder.TryGetValue(a.Id, out var g) && !(g.Level == GeometryLevel.DataOnly && SameHash(ctx, a, b)))
+        else if (ladder.TryGetValue(a.Id, out var g)
+            && !(g.Level == GeometryLevel.DataOnly && ctx.SameGeometryHash(a, b) && SameRepresentation(a, b)))
         {
             geometry.Add(g);
             // Data-only is the same shape: it is listed, but never a change. A rigid move is Placement, so equal

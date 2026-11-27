@@ -150,7 +150,15 @@ public sealed record ObjectRecord
 /// </summary>
 public sealed record GeometrySignature
 {
+    /// <summary>Shape identity only: the same shape hashes equal however it is represented. Matching pass 3 uses it.</summary>
     public ulong Hash { get; init; }
+
+    /// <summary>
+    /// How the shape is represented, not the shape: e.g. a curve's type and its domain relative to its length.
+    /// Equal <see cref="Hash"/> with a different representation is listed as Data-only, never a change. 0 = none.
+    /// </summary>
+    public ulong Representation { get; init; }
+
     public double Length { get; init; }
     public double Area { get; init; }
     public double Volume { get; init; }

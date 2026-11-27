@@ -10,9 +10,9 @@ namespace DittoHopper.Rhino;
 /// deviation itself is two-sided: samples on each shape are measured to the other. Samples cover every
 /// non-empty knot span and the Greville points (where each control point pulls hardest); when that needs more
 /// samples than the budget, the shape is not measured, so the ladder never claims Data-only or Moved on a
-/// guess. Breps also compare their naked edges, so a removed face or a new hole can't hide inside the other
-/// shape. Types with no shape to sample (text, dots, hatches, lights) compare their canonical hash after the
-/// move. Each pair's geometry is touched by one call at a time.
+/// guess. Breps and meshes also compare their naked edges both ways, so a removed face or a new or moved hole
+/// can't hide inside the other shape. Types with no shape to sample (text, dots, hatches, lights) compare their
+/// canonical hash after the move, when the hash grid is fine enough. Each pair's geometry is touched by one call at a time.
 /// </summary>
 public sealed class RhinoGeometryService : IGeometryService
 {
@@ -41,7 +41,7 @@ public sealed class RhinoGeometryService : IGeometryService
         var x = movedA ?? ea.Geometry;
         var y = scaledB ?? eb.Geometry;
         if (Measure.Deviation(x, y, tolerance) is not { } d)
-            return SameHash(x, eb.Signature.Hash);
+            return SameHash(x, eb.Signature.Hash, tolerance);
         // Measures don't change under a rigid move; B's scale into A's units.
         var sb = eb.Signature;
         var measuresB = (sb.Length * scale, sb.Area * scale * scale, sb.Volume * scale * scale * scale);
@@ -79,9 +79,14 @@ public sealed class RhinoGeometryService : IGeometryService
         };
     }
 
-    /// <summary>For text, dots, hatches, lights and anything unsampled: equal canonical hashes on B's grid mean the same thing.</summary>
-    private ShapeDeviation? SameHash(GeometryBase x, ulong hashB)
+    /// <summary>
+    /// For text, dots, hatches, lights, and shapes over the sample budget: equal canonical hashes on B's grid mean
+    /// the same thing, but only when that grid is no coarser than the shape tolerance; otherwise nothing is claimed.
+    /// </summary>
+    private ShapeDeviation? SameHash(GeometryBase x, ulong hashB, double tolerance)
     {
+        if (b.Model.Info.HashGrid * scale > tolerance * (1 + 1e-9))
+            return null;
         using var inB = scale == 1 ? null : Transformed(x, Transform.Scale(Point3d.Origin, 1 / scale));
         return GeometryHasher.Hash(inB ?? x, b.Model.Info.HashGrid, a.Names) == hashB ? new ShapeDeviation(0) : null;
     }
@@ -276,7 +281,40 @@ internal static class Measure
                 (max, sum, count) = (Math.Max(max, dist), sum + dist, count + 1);
             }
         }
-        return new ShapeDeviation(max, count > 0 ? sum / count : null);
+        var boundary = Boundaries([.. (m.GetNakedEdges() ?? []).Select(p => new PolylineCurve(p))],
+            [.. (n.GetNakedEdges() ?? []).Select(p => new PolylineCurve(p))], limit);
+        return boundary is double b ? new ShapeDeviation(Math.Max(max, b), count > 0 ? sum / count : null) : null;
+    }
+
+    /// <summary>
+    /// The two-sided distance between two sets of boundary curves (naked edges), up to <paramref name="limit"/>.
+    /// A hole, moved or new, lies inside the other shape's surface, but its boundary has nothing near it on the
+    /// other side. Null when the boundaries are too detailed to sample. Disposes the curves.
+    /// </summary>
+    private static double? Boundaries(Curve[] x, Curve[] y, double limit)
+    {
+        try
+        {
+            double max = 0;
+            foreach (var (from, to) in new[] { (x, y), (y, x) })
+                foreach (var e in from)
+                {
+                    if (CurveSamples(e) is not { } samples) return null;
+                    foreach (var p in samples)
+                    {
+                        double best = double.PositiveInfinity;
+                        foreach (var other in to)
+                            if (other.ClosestPoint(p, out double t, limit)) best = Math.Min(best, p.DistanceTo(other.PointAt(t)));
+                        if (best > limit) return limit;
+                        max = Math.Max(max, best);
+                    }
+                }
+            return max;
+        }
+        finally
+        {
+            foreach (var e in x.Concat(y)) e.Dispose();
+        }
     }
 
     /// <summary>Surfaces, polysurfaces, extrusions and SubDs, compared as Breps. Null for anything else, or over budget.</summary>
@@ -297,30 +335,8 @@ internal static class Measure
                 (max, sum, n) = (Math.Max(max, dist), sum + dist, n + 1);
             }
 
-        // A hole or a missing face can lie inside the other shape's surface; the boundaries still differ.
-        var nakedX = bx.DuplicateNakedEdgeCurves(true, true) ?? [];
-        var nakedY = by.DuplicateNakedEdgeCurves(true, true) ?? [];
-        try
-        {
-            foreach (var (from, to) in new[] { (nakedX, nakedY), (nakedY, nakedX) })
-                foreach (var e in from)
-                {
-                    if (CurveSamples(e) is not { } samples) return null;
-                    foreach (var p in samples)
-                    {
-                        double best = double.PositiveInfinity;
-                        foreach (var other in to)
-                            if (other.ClosestPoint(p, out double t, limit)) best = Math.Min(best, p.DistanceTo(other.PointAt(t)));
-                        if (best > limit) return new ShapeDeviation(limit);
-                        max = Math.Max(max, best);
-                    }
-                }
-        }
-        finally
-        {
-            foreach (var e in nakedX.Concat(nakedY)) e.Dispose();
-        }
-        return new ShapeDeviation(max, n > 0 ? sum / n : null);
+        var boundary = Boundaries(bx.DuplicateNakedEdgeCurves(true, true) ?? [], by.DuplicateNakedEdgeCurves(true, true) ?? [], limit);
+        return boundary is double b ? new ShapeDeviation(Math.Max(max, b), n > 0 ? sum / n : null) : null;
     }
 
     /// <summary>The Brep form of a surface-like geometry; returns the copy to dispose, if one was made.</summary>

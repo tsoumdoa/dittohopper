@@ -37,9 +37,12 @@ internal static class GeometryLadder
     public static GeometryChange Classify(DiffContext ctx, IGeometryService? service, ObjectRecord a, ObjectRecord b)
     {
         var change = new GeometryChange { A = a.Id, B = b.Id, Level = GeometryLevel.Unclassified };
+        double tol = ctx.ShapeTolerance;
+        // The same shape (equal hashes that prove it) in a different representation: Data-only by definition.
+        if (ctx.HashProvesUnchanged && ctx.SameGeometryHash(a, b))
+            return change with { Level = GeometryLevel.DataOnly, Detail = service?.DataOnlyReason(a.Id, b.Id) ?? "representation changed" };
         if (service is null)
             return change;
-        double tol = ctx.ShapeTolerance;
 
         // Equal shapes have bounding boxes within tolerance, so this cheap test skips the sampling for most moves.
         if (BoxesWithin(a.Geometry.BBox, b.Geometry.BBox, ctx.Scale, tol)

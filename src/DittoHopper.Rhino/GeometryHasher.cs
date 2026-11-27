@@ -18,9 +18,9 @@ internal sealed record HashNames(
 /// The canonical geometry hash, per geometry type: a type tag and the structure (degrees, counts, knots,
 /// weights, indices, trims) as exact integers, and every coordinate snapped to the grid by
 /// <see cref="CanonicalHash"/>. Rhino's own serialization is never hashed: it carries non-geometric data.
-/// Curves and surfaces go through their NURBS form with knots normalized to the domain; a top-level curve also
-/// adds its type and domain, so a line that became the same degree-1 NURBS curve, or a domain change, differs
-/// in hash and the ladder lists it as Data-only rather than hiding it.
+/// Curves and surfaces go through their NURBS form with knots normalized to the domain, so the hash is shape
+/// identity only: a line and the same degree-1 NURBS curve, or a domain change, hash alike. How a shape is
+/// represented is the separate <see cref="Representation"/>, which the ladder lists as Data-only when it differs.
 /// </summary>
 internal static class GeometryHasher
 {
@@ -41,7 +41,6 @@ internal static class GeometryHasher
                 foreach (var p in pc.GetPoints()) Add(h, p);
                 break;
             case Curve c:
-                h.Add(c.GetType().Name).Add(Exact(c.Domain.T0)).Add(Exact(c.Domain.T1));
                 AddCurve(h, c);
                 break;
             case Brep b:
@@ -131,6 +130,7 @@ internal static class GeometryHasher
         return new GeometrySignature
         {
             Hash = hash,
+            Representation = g is Curve curve ? Representation(curve, length) : 0,
             Length = length,
             Area = area,
             Volume = volume,
@@ -140,6 +140,17 @@ internal static class GeometryHasher
     }
 
     public static Vec3 Vec(Point3d p) => new(p.X, p.Y, p.Z);
+
+    /// <summary>
+    /// A curve's representation: its type and its domain divided by its length, so the same line in millimetres
+    /// and in metres represents alike but a domain change or a line turned NURBS does not.
+    /// </summary>
+    private static ulong Representation(Curve c, double length)
+    {
+        double per = length > 0 ? 1 / length : 1;
+        return new CanonicalHash("representation:curve", 1).Add(c.GetType().Name)
+            .Add(Exact(c.Domain.T0 * per)).Add(Exact(c.Domain.T1 * per)).Finish();
+    }
 
     private static (double Area, double Volume, Point3d? Centroid) Mass(Brep b)
     {
@@ -320,12 +331,16 @@ internal static class GeometryHasher
         foreach (var c in new[] { l.Diffuse, l.Specular, l.Ambient }) h.Add((long)c.ToArgb());
         Add(h, l.Location);
         foreach (var v in new[] { l.Direction, l.Length, l.Width }) h.Add(v.X).Add(v.Y).Add(v.Z);
-        h.Add(Exact(l.SpotAngleRadians)).Add(Exact(l.HotSpot)).Add(Exact(l.SpotExponent));
+        h.Add(Exact(l.SpotAngleRadians)).Add(Exact(l.HotSpot)).Add(Exact(l.SpotExponent)).Add(Exact(l.PowerWatts));
+        var at = l.AttenuationVector;
+        h.Add(Exact(at.X)).Add(Exact(at.Y)).Add(Exact(at.Z));
     }
 
     private static void AddHatch(CanonicalHash h, Hatch hatch, HashNames names)
     {
-        h.Add(names.HatchPatterns.GetValueOrDefault(hatch.PatternIndex)).Add(Exact(hatch.PatternScale)).Add(Exact(hatch.PatternRotation));
+        // Built-in patterns (Solid -1, Hatch1 -2, ...) aren't in the table: their index is their identity.
+        string pattern = names.HatchPatterns.TryGetValue(hatch.PatternIndex, out var key) ? key : "built-in " + hatch.PatternIndex;
+        h.Add(pattern).Add(Exact(hatch.PatternScale)).Add(Exact(hatch.PatternRotation));
         AddPlane(h, hatch.Plane);
         Add(h, hatch.BasePoint);
         foreach (bool outer in new[] { true, false })

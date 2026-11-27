@@ -55,9 +55,10 @@ public sealed class AdapterTests(RhinoHost host)
         Assert.NotEqual(Hash(text), Hash(renamed));
         Assert.NotEqual(Hash(new TextDot("A", Point3d.Origin)), Hash(new TextDot("B", Point3d.Origin)));
 
-        // A line that became the same degree-1 NURBS curve differs in hash, so the ladder can list it as Data-only.
+        // A line and the same degree-1 NURBS curve are the same shape: equal hashes, different representations.
         var line = new LineCurve(new Point3d(0, 0, 0), new Point3d(100, 0, 0));
-        Assert.NotEqual(Hash(line), Hash(line.ToNurbsCurve()));
+        Assert.Equal(Hash(line), Hash(line.ToNurbsCurve()));
+        Assert.NotEqual(GeometryHasher.Signature(line, 0).Representation, GeometryHasher.Signature(line.ToNurbsCurve(), 0).Representation);
     });
 
     [RhinoFact]
