@@ -362,7 +362,7 @@ The building blocks are in RhinoCommon. Rigid-transform fitting, sequence diffs 
 | Viewport overlay | `DisplayConduit` | Status colors, ghosts, halos |
 | Review panel | Eto.Forms dockable panel registered with `Panels.RegisterPanel` |  |
 
-**Hashing.** Write a canonical serialization (type tag + coordinates snapped to the tolerance grid) and hash it, for example with xxHash64. Don't hash Rhino's binary serialization, which can carry non-geometric data. A value near a grid boundary can snap differently. That only sends the pair to step 2, so it costs time, never correctness.
+**Hashing.** Write a canonical serialization (type tag + coordinates snapped to the tolerance grid) and hash it, for example with xxHash64. Don't hash Rhino's binary serialization, which can carry non-geometric data. A value near a grid boundary can snap differently. That only sends the pair to step 2, so it costs time, never correctness. The converse is accepted (decided): equal snapped hashes mean Unchanged, so a move that stays inside one grid cell (at most the cell diagonal, about 1.7 × the grid) is not reported. Set a shape tolerance finer than the grid to measure such pairs instead.
 
 **Performance.** Hash every object once per snapshot. Run steps 2–5 only on hash-differing pairs, in parallel, since geometry is read-only. Read files off the UI thread. In GH, cache snapshots by path, file size and last-write time.
 
