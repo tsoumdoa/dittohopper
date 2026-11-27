@@ -36,7 +36,7 @@ Non-goals for v0 and v1:
 
 ## Architecture
 
-Build one UI-free diff core (a plain .NET library on RhinoCommon) and put three thin shells on it. Grasshopper is the right first shell, but it is a poor place to review 300 changes, so it can't be the only one.
+Build one UI-free diff core (a plain .NET 8 library with no Rhino types; a separate Rhino adapter snapshots models into it) and put three thin shells on it. Grasshopper is the right first shell, but it is a poor place to review 300 changes, so it can't be the only one.
 
 *Architecture: inputs (two .3dm files / active doc vs last save / snapshot history) -> Diff core [Snapshot -> Match tables -> Match objects -> Compare -> Group + flag] -> DiffResult -> shells: Grasshopper components (v0), Rhino panel + conduit (v1), Headless on Rhino.Compute (later).*
 
@@ -140,7 +140,7 @@ Each matched pair is compared property by property. Each difference becomes one 
 3. **Emit a PropertyChange** for each property that differs: `{object, property, from, to}`. Count the unchanged properties too, so the UI can confirm them.
 4. **Group into change sets** by identical signature (property, from, to, plus the same flags). "Layer `Walls` → `Default` on 23 objects" is one row, not 23.
 
-**User text is diffed per key** (decided): each key is added, removed or changed. Example: `panel_type` A → B, `+ supplier = FX-02`, `− temp_note`.
+**User text is diffed per key** (decided): each key is added, removed or changed. Example: `panel_type` A → B, `+ supplier = FX-02`, `− temp_note`. The stable key (`diff:uid`) is identity, not data, so it is never reported as a change.
 
 **What counts as a change.** Defaults, editable in Diff Settings:
 
@@ -246,7 +246,7 @@ The output people want is a sentence like "Outside `Facade::*`, only 28 objects 
 
 ## Data model
 
-The core is a pure function from two snapshots and settings to a serializable `DiffResult`. This is a sketch to start from, not a frozen API. Names are proposals.
+The core is a pure function from two snapshots and settings to a serializable `DiffResult`. This is a sketch to start from, not a frozen API. Names are proposals. The implemented API is in `src/DittoHopper.Core`: it uses Core value types in place of RhinoCommon ones, and fields join it when the milestone that uses them lands.
 
 ```csharp
 // Entry point: no UI, no RhinoDoc dependency after snapshotting.

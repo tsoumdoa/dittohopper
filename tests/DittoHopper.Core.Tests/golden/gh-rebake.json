@@ -1,0 +1,84 @@
+{
+  "format": 1,
+  "a": {
+    "source": "A",
+    "units": "millimeters",
+    "absoluteTolerance": 0.01,
+    "hashGrid": 0.01,
+    "skipped": []
+  },
+  "b": {
+    "source": "B",
+    "units": "millimeters",
+    "absoluteTolerance": 0.01,
+    "hashGrid": 0.01,
+    "skipped": []
+  },
+  "header": {
+    "units": "millimeters",
+    "tolerance": 0.01,
+    "hashGridsMatch": true,
+    "notes": []
+  },
+  "settings": {
+    "stableKey": "diff:uid",
+    "layerInferShare": 0.6,
+    "toggles": {
+      "placement": true,
+      "shape": true,
+      "layer": true,
+      "blockDefinition": true,
+      "groupMembership": true,
+      "displayOrder": false,
+      "color": true,
+      "material": true,
+      "linetype": true,
+      "printWidth": false,
+      "name": true,
+      "userText": true
+    }
+  },
+  "tableMatches": [
+    {
+      "table": "layer",
+      "a": "00000000-0000-0000-0000-000000000001",
+      "b": "00000000-0000-0000-0000-000000000001",
+      "by": "id",
+      "confidence": 1
+    }
+  ],
+  "tableEvents": [],
+  "matches": [
+    {
+      "a": "00000000-0000-0000-0000-000000000002",
+      "b": "00000000-0000-0000-0000-000000001000",
+      "by": "geometryHash",
+      "confidence": 0.99,
+      "unchangedProperties": 7
+    },
+    {
+      "a": "00000000-0000-0000-0000-000000000003",
+      "b": "00000000-0000-0000-0000-000000001001",
+      "by": "geometryHash",
+      "confidence": 0.99,
+      "unchangedProperties": 7
+    },
+    {
+      "a": "00000000-0000-0000-0000-000000000004",
+      "b": "00000000-0000-0000-0000-000000001002",
+      "by": "geometryHash",
+      "confidence": 0.99,
+      "unchangedProperties": 7
+    },
+    {
+      "a": "00000000-0000-0000-0000-000000000005",
+      "b": "00000000-0000-0000-0000-000000001003",
+      "by": "geometryHash",
+      "confidence": 0.99,
+      "unchangedProperties": 7
+    }
+  ],
+  "geometry": [],
+  "changeSets": [],
+  "unchangedObjects": 4
+}
