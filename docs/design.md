@@ -357,7 +357,7 @@ The building blocks are in RhinoCommon. Rigid-transform fitting, sequence diffs 
 | Structure (step 4) | `NurbsCurve.Points`, `Knots`; `NurbsSurface.Points`; `Mesh.Vertices`; `SubD.Vertices` | Use `ToNurbsCurve()` to compare mixed curve types |
 | Topology (step 5) | `Brep.Faces`, `Brep.Edges`, `BrepEdge.Valence == EdgeAdjacency.Naked`, `Brep.IsSolid`; `Mesh.IsClosed`, `Mesh.IsManifold` |  |
 | Polyline vertex diff | `Curve.TryGetPolyline`, then an LCS or Myers diff with tolerance equality | Reports inserted, removed, moved and untouched vertices |
-| Rigid fit (step 3) | Custom Kabsch (SVD) on CVs or sample points | Accept when residual ≤ shape tolerance; determinant −1 means mirrored |
+| Rigid fit (step 3) | Custom Kabsch on CVs, vertices or a frame, solved in Horn's quaternion form (stays defined for planar and collinear points) | Accept when the residual and the moved shape's deviation are both ≤ shape tolerance; determinant −1 means mirrored |
 | Nearest candidate (pass 4) | `RTree` on bounding-box centers |  |
 | Viewport overlay | `DisplayConduit` | Status colors, ghosts, halos |
 | Review panel | Eto.Forms dockable panel registered with `Panels.RegisterPanel` |  |

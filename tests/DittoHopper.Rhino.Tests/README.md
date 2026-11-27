@@ -38,3 +38,33 @@ and the folder is deleted when the run ends:
 Run anything that touches RhinoCommon through `host.Run(...)`, so it runs on the Rhino thread.
 Enumerate `File3dm.Objects` with `foreach`. Its `IList` indexer and `CopyTo` return nulls, so LINQ
 `Select`/`ToList` on it breaks.
+
+## Fixture suite and golden files
+
+`FixtureTests` builds every test-plan row from `docs/design.md` with `FixturePair`, snapshots
+both sides with `RhinoSnapshot`, diffs them with the geometry ladder and compares the result with
+`golden/<fixture>.json`. Each fixture also asserts the plan's two numbers: noise (reported rows,
+meaning table events plus change sets, minus true changes) is 0, and no pair is wrong. Every
+top-level object carries a truth label in user text (`fixture:truth`), which is stripped before
+the diff. GUIDs are renumbered in record order, so the golden files don't change between runs.
+
+To rewrite the golden files after an intended change, set `DITTOHOPPER_UPDATE_GOLDEN=1` for one
+run, then review the diff before committing.
+
+## Noise report
+
+`NoiseReportTests` generates building-like models (about 3,000 objects, nested layers and blocks,
+groups, user text) and realistic B sides: a consultant revision with a partial rebuild that loses
+GUIDs, Grasshopper re-bakes, an in-place conversion, and a save/reopen round trip. For each pair it
+prints reported rows against true changes, wrong pairings and timings. It gates nothing and writes
+nothing to the repository. It needs its own variable, so neither the hook nor the command above
+runs it:
+
+```powershell
+$env:DITTOHOPPER_RHINO_TESTS = '1'; $env:DITTOHOPPER_NOISE_REPORT = '1'
+try {
+    dotnet test tests/DittoHopper.Rhino.Tests -c Debug --filter Category=NoiseReport --logger "console;verbosity=detailed"
+} finally {
+    Remove-Item Env:DITTOHOPPER_RHINO_TESTS, Env:DITTOHOPPER_NOISE_REPORT -ErrorAction SilentlyContinue
+}
+```
