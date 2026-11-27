@@ -42,7 +42,7 @@ public sealed record DiffHeader
     public required UnitSystem Units { get; init; }
     /// <summary>The larger of the two absolute tolerances, in <see cref="Units"/>.</summary>
     public required double Tolerance { get; init; }
-    /// <summary>False when the snapshots hashed on different grids: matching pass 3 is skipped and every pair's geometry is unclassified.</summary>
+    /// <summary>False when the snapshots hashed on different grids: matching pass 3 is skipped and no geometry is equal by hash, so every pair goes down the geometry ladder.</summary>
     public required bool HashGridsMatch { get; init; }
     public IReadOnlyList<string> Notes { get; init; } = [];
 }
@@ -110,7 +110,11 @@ public sealed record PropertyChange(
     ValueSource? FromSource = null,
     ValueSource? ToSource = null);
 
-/// <summary>The geometry ladder's verdict. <see cref="Unclassified"/>: the hash differs and the ladder (M2) hasn't run.</summary>
+/// <summary>
+/// The geometry ladder's verdict. <see cref="Unclassified"/>: the hash differs, and the shape is neither the same
+/// (<see cref="DataOnly"/>) nor rigidly moved (<see cref="Moved"/>); it is not yet classified further (steps 4–5).
+/// <see cref="DataOnly"/> pairs are listed but never count as changes.
+/// </summary>
 public enum GeometryLevel { Unclassified, Unchanged, DataOnly, Moved, Edited, Reshaped, TopologyChanged }
 
 public sealed record GeometryChange

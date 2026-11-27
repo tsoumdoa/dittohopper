@@ -189,8 +189,9 @@ internal static class TableDiff
 
     /// <summary>
     /// A definition changed itself when its own content hash differs, or when its nested occurrences differ:
-    /// the multiset of (definition through the block map, placement). Hashes only compare on matching grids,
-    /// so across grids only the nested definitions are counted.
+    /// the multiset of (definition through the block map, placement), or its members' layers differ: the multiset
+    /// of (layer through the layer map, member hash). Hashes only compare on matching grids,
+    /// so across grids only the nested definitions and member layers are counted.
     /// </summary>
     private static bool DefinitionChanged(DiffContext ctx, BlockRecord da, BlockRecord db)
     {
@@ -199,9 +200,15 @@ internal static class TableDiff
             return true;
         var nestedA = da.Nested.Select(n => (Def: ctx.Blocks.Map(n.DefinitionId), Placement: grids ? n.PlacementHash : 0));
         var nestedB = db.Nested.Select(n => (Def: (Guid?)n.DefinitionId, Placement: grids ? n.PlacementHash : 0));
-        static IEnumerable<(Guid? Def, ulong Placement)> Sorted(IEnumerable<(Guid? Def, ulong Placement)> x) =>
-            x.OrderBy(n => n.Def).ThenBy(n => n.Placement);
-        return nestedA.Any(n => n.Def is null) || !Sorted(nestedA).SequenceEqual(Sorted(nestedB));
+        static IEnumerable<(Guid? Id, ulong Hash)> Sorted(IEnumerable<(Guid? Id, ulong Hash)> x) =>
+            x.OrderBy(n => n.Id).ThenBy(n => n.Hash);
+        if (nestedA.Any(n => n.Def is null) || !Sorted(nestedA).SequenceEqual(Sorted(nestedB)))
+            return true;
+
+        // Member layers through the layer map: a rename maps to the same layer, a move doesn't.
+        var membersA = da.Members.Select(x => (Id: x.LayerId == Guid.Empty ? Guid.Empty : ctx.Layers.Map(x.LayerId), Hash: grids ? x.Hash : 0));
+        var membersB = db.Members.Select(x => (Id: (Guid?)x.LayerId, Hash: grids ? x.Hash : 0));
+        return !Sorted(membersA).SequenceEqual(Sorted(membersB));
     }
 
     private static void BlockEvents(DiffContext ctx)

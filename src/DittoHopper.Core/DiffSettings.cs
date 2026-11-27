@@ -14,6 +14,12 @@ public sealed record DiffSettings
     /// <summary>Share of an A layer's matched objects that must sit on one new B layer to infer it is that layer.</summary>
     public double LayerInferShare { get; init; } = 0.60;
 
+    /// <summary>
+    /// The deviation, in A's units, below which a geometry difference is not a real change (Data-only, or a
+    /// rigid fit's residual). Null = the comparison's absolute tolerance.
+    /// </summary>
+    public double? ShapeTolerance { get; init; }
+
     public PropertyToggles Toggles { get; init; } = new();
 }
 

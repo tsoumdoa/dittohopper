@@ -78,6 +78,26 @@ public class CompareTests
     }
 
     [Fact]
+    public void BlockMemberMovedToAnotherLayerIsAContentChange_ALayerRenameIsNot()
+    {
+        var a = new SnapshotBuilder();
+        var red = a.Layer("Red");
+        var blue = a.Layer("Blue");
+        var block = a.Block("Window");
+        a.EditBlock(block, d => d with { Members = [new BlockMember(7, red)] });
+        a.Instance(a.Layer("Windows"), block);
+
+        var renamed = a.Clone();
+        renamed.EditLayer(red, l => l with { Name = "Crimson" });
+        Assert.DoesNotContain(ModelDiff.Diff(a.Build(), renamed.Build()).TableEvents, e => e.Table == TableKind.Block);
+
+        var moved = a.Clone();
+        moved.EditBlock(block, d => d with { Members = [new BlockMember(7, blue)] });
+        var e = Assert.Single(ModelDiff.Diff(a.Build(), moved.Build()).TableEvents);
+        Assert.Equal((TableKind.Block, PropertyKind.Content), (e.Table, e.Property));
+    }
+
+    [Fact]
     public void UngroupingIsOneSetLinkedToTheGroupRemoval_ReGroupingMatchesByMembers()
     {
         var a = new SnapshotBuilder();

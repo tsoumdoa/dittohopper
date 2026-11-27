@@ -8,6 +8,13 @@ namespace DittoHopper.Core;
 public readonly record struct Vec3(double X, double Y, double Z)
 {
     public static Vec3 operator *(Vec3 v, double s) => new(v.X * s, v.Y * s, v.Z * s);
+    public static Vec3 operator +(Vec3 a, Vec3 b) => new(a.X + b.X, a.Y + b.Y, a.Z + b.Z);
+    public static Vec3 operator -(Vec3 a, Vec3 b) => new(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
+
+    public double Length => Math.Sqrt(Dot(this, this));
+
+    public static double Dot(Vec3 a, Vec3 b) => a.X * b.X + a.Y * b.Y + a.Z * b.Z;
+    public static Vec3 Cross(Vec3 a, Vec3 b) => new(a.Y * b.Z - a.Z * b.Y, a.Z * b.X - a.X * b.Z, a.X * b.Y - a.Y * b.X);
 
     public static double Distance(Vec3 a, Vec3 b)
     {
@@ -41,17 +48,60 @@ public sealed class Xform : IEquatable<Xform>
 
     public IReadOnlyList<double> Values => m;
 
-    /// <summary>Equal within <paramref name="translationTol"/> on the translation column and 1e-9 elsewhere.</summary>
+    /// <summary>
+    /// Equal when the translations are at most <paramref name="translationTol"/> apart (as a vector, so a
+    /// diagonal offset counts its full length) and every other entry is within 1e-9.
+    /// </summary>
     public bool AlmostEquals(Xform other, double translationTol)
     {
         for (int i = 0; i < 16; i++)
-        {
-            double tol = i is 3 or 7 or 11 ? translationTol : 1e-9;
-            if (Math.Abs(m[i] - other.m[i]) > tol)
+            if (i is not (3 or 7 or 11) && Math.Abs(m[i] - other.m[i]) > 1e-9)
                 return false;
-        }
-        return true;
+        double dx = m[3] - other.m[3], dy = m[7] - other.m[7], dz = m[11] - other.m[11];
+        return Math.Sqrt(dx * dx + dy * dy + dz * dz) <= translationTol;
     }
+
+    /// <summary>This transform applied after <paramref name="first"/>: the matrix product this × first.</summary>
+    public Xform After(Xform first)
+    {
+        var v = new double[16];
+        for (int r = 0; r < 4; r++)
+            for (int c = 0; c < 4; c++)
+                for (int k = 0; k < 4; k++)
+                    v[r * 4 + c] += m[r * 4 + k] * first.m[k * 4 + c];
+        return new Xform(v);
+    }
+
+    /// <summary>The inverse of an affine transform, or null when it is singular or projective.</summary>
+    public Xform? Inverse()
+    {
+        if (m[12] != 0 || m[13] != 0 || m[14] != 0 || m[15] != 1)
+            return null;
+        double a = m[0], b = m[1], c = m[2], d = m[4], e = m[5], f = m[6], g = m[8], h = m[9], i = m[10];
+        double det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+        if (!(Math.Abs(det) > 1e-12))
+            return null;
+        double[] l =
+        [
+            (e * i - f * h) / det, (c * h - b * i) / det, (b * f - c * e) / det,
+            (f * g - d * i) / det, (a * i - c * g) / det, (c * d - a * f) / det,
+            (d * h - e * g) / det, (b * g - a * h) / det, (a * e - b * d) / det,
+        ];
+        double tx = m[3], ty = m[7], tz = m[11];
+        return new Xform(
+        [
+            l[0], l[1], l[2], -(l[0] * tx + l[1] * ty + l[2] * tz),
+            l[3], l[4], l[5], -(l[3] * tx + l[4] * ty + l[5] * tz),
+            l[6], l[7], l[8], -(l[6] * tx + l[7] * ty + l[8] * tz),
+            0, 0, 0, 1,
+        ]);
+    }
+
+    /// <summary>Applies the transform to a point.</summary>
+    public Vec3 Apply(Vec3 p) => new(
+        m[0] * p.X + m[1] * p.Y + m[2] * p.Z + m[3],
+        m[4] * p.X + m[5] * p.Y + m[6] * p.Z + m[7],
+        m[8] * p.X + m[9] * p.Y + m[10] * p.Z + m[11]);
 
     /// <summary>The same transform with its translation multiplied by <paramref name="s"/> (a unit change).</summary>
     public Xform ScaleTranslation(double s)

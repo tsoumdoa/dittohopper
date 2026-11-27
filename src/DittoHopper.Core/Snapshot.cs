@@ -13,6 +13,9 @@ public sealed record ModelSnapshot
     public IReadOnlyList<TableRecord> Linetypes { get; init; } = [];
     public IReadOnlyList<GroupRecord> Groups { get; init; } = [];
     public IReadOnlyList<ObjectRecord> Objects { get; init; } = [];
+
+    /// <summary>The layer that was current when the snapshot was taken; null when unknown (a .3dm file doesn't say).</summary>
+    public Guid? CurrentLayerId { get; init; }
 }
 
 /// <summary>Where a snapshot came from and how its coordinates were hashed.</summary>
@@ -24,6 +27,9 @@ public sealed record SnapshotInfo
     public DateTimeOffset? CapturedAt { get; init; }
     public required UnitSystem Units { get; init; }
     public required double AbsoluteTolerance { get; init; }
+
+    /// <summary>The model's angle tolerance in radians; null when the source doesn't say.</summary>
+    public double? AngleTolerance { get; init; }
 
     /// <summary>
     /// Grid spacing the hashes were snapped to, in <see cref="Units"/>. The adapter hashes coordinates in the
@@ -84,7 +90,17 @@ public sealed record BlockRecord
 
     /// <summary>One entry per nested instance inside this definition (repeats allowed), in any order.</summary>
     public IReadOnlyList<NestedBlock> Nested { get; init; } = [];
+
+    /// <summary>
+    /// One entry per member object (nested instances included), in any order: its fingerprint (the hash it
+    /// contributes to <see cref="ContentHash"/>, which leaves the layer out) and its layer. Compared as a
+    /// multiset through the layer map, so a renamed layer changes nothing but a member moved to another does.
+    /// </summary>
+    public IReadOnlyList<BlockMember> Members { get; init; } = [];
 }
+
+/// <summary>A block definition's member: the hash of its geometry and attributes, and the layer it sits on.</summary>
+public readonly record struct BlockMember(ulong Hash, Guid LayerId);
 
 /// <summary>
 /// A nested instance: the definition it places, and a hash of its placement (transform and attributes, the
@@ -129,11 +145,20 @@ public sealed record ObjectRecord
 
 /// <summary>
 /// The geometry fingerprint: a canonical hash (see <see cref="CanonicalHash"/>) plus position-free and
-/// placement measures. Structure, topology and CV arrays join this in M2, with the geometry ladder.
+/// placement measures. The geometry itself stays with the adapter, which answers the ladder's questions
+/// through <see cref="IGeometryService"/>.
 /// </summary>
 public sealed record GeometrySignature
 {
+    /// <summary>Shape identity only: the same shape hashes equal however it is represented. Matching pass 3 uses it.</summary>
     public ulong Hash { get; init; }
+
+    /// <summary>
+    /// How the shape is represented, not the shape: e.g. a curve's type and its domain relative to its length.
+    /// Equal <see cref="Hash"/> with a different representation is listed as Data-only, never a change. 0 = none.
+    /// </summary>
+    public ulong Representation { get; init; }
+
     public double Length { get; init; }
     public double Area { get; init; }
     public double Volume { get; init; }
