@@ -1,0 +1,20 @@
+name: dittohopper
+version: "@VERSION@"
+authors:
+  - aectooling by tomoS
+license: MIT
+description: >
+  Compare two Rhino models in Grasshopper and see what changed, and just as
+  clearly what did not. Each change is reported once, at its root cause; every
+  matched pair says how it was matched. Includes a QA gate for layers that must
+  not change.
+url: https://github.com/tsoumdoa/dittohopper
+icon: icon.png
+keywords:
+  - grasshopper
+  - diff
+  - compare
+  - model
+  - revision
+  - qa
+  - guid:e59805d1-fcad-4d4f-b916-57b439bf9d91
