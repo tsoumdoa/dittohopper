@@ -142,7 +142,7 @@ internal static class Measure
     {
         if (!HasTopology(x) || !HasTopology(y))
             return true;   // points, clouds and the like have no topology to compare
-        if (sx.Closed != sy.Closed || sx.BoundaryLoops != sy.BoundaryLoops)
+        if (sx.Closed != sy.Closed || sx.BoundaryLoops != sy.BoundaryLoops || sx.Components != sy.Components)
             return false;
         var (length, area, volume) = (sy.Length * scale, sy.Area * scale * scale, sy.Volume * scale * scale * scale);
         double boundary = Math.Max(sx.BoundaryLength, sy.BoundaryLength * scale), larger = Math.Max(sx.Area, area);
@@ -155,17 +155,17 @@ internal static class Measure
 
     /// <summary>
     /// The topology summary the snapshot signature stores: closed (or solid), faces, boundary loops (naked edges
-    /// joined within <paramref name="tol"/>) and their total length. Null for types without topology.
+    /// joined within <paramref name="tol"/>), their total length, and a mesh's disjoint pieces. Null for types without topology.
     /// </summary>
-    public static (bool Closed, int Faces, int Loops, double Boundary)? Summary(GeometryBase g, double tol)
+    public static (bool Closed, int Faces, int Loops, double Boundary, int Components)? Summary(GeometryBase g, double tol)
     {
         switch (g)
         {
             case Curve c:
-                return (c.IsClosed, 0, 0, 0);
+                return (c.IsClosed, 0, 0, 0, 0);
             case Mesh m:
                 var naked = m.GetNakedEdges() ?? [];
-                return (m.IsClosed, m.Faces.Count, naked.Length, naked.Sum(p => p.Length));
+                return (m.IsClosed, m.Faces.Count, naked.Length, naked.Sum(p => p.Length), m.DisjointMeshCount);
             default:
                 using (AsBrep(g, out var brep))
                 {
@@ -176,7 +176,7 @@ internal static class Measure
                         var loops = edges.Length == 0 ? [] : Curve.JoinCurves(edges, tol) ?? [];
                         int count = loops.Length;
                         foreach (var l in loops) l.Dispose();
-                        return (brep.IsSolid, brep.Faces.Count, count, edges.Sum(e => e.GetLength()));
+                        return (brep.IsSolid, brep.Faces.Count, count, edges.Sum(e => e.GetLength()), 0);
                     }
                     finally
                     {

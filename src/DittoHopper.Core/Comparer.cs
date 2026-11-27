@@ -35,7 +35,12 @@ internal sealed class Comparer
         {
             var (changed, unchanged) = c.Compare(p.A, p.B);
             matches.Add(new Match(p.A.Id, p.B.Id, p.By, p.Confidence, unchanged));
-            if (changed == 0) unchangedObjects++;
+            // A fuzzy pairing is itself unconfirmed: it is never "identical", and with no other change it still
+            // gets a Pairing row, so it reaches a change set (flagged fuzzy-match) and the review.
+            if (p.By == MatchedBy.Fuzzy && changed == 0)
+                c.rows.Add(new ChangeRow(new PropertyChange(PropertyKind.Pairing, null, null, null), null, null, new ObjectPair(p.A.Id, p.B.Id)));
+            else if (changed == 0)
+                unchangedObjects++;
         }
         return new Output(c.rows, matches, c.geometry, unchangedObjects, c.displacement);
     }
@@ -163,6 +168,15 @@ internal sealed class Comparer
             }
             else
             {
+                // Moved + edited: the rigid part is Placement, so it reports even with Shape off and shares a set
+                // with equal moves; the Shape toggle covers only the residual edit.
+                if (g.Rigid is { } rigid)
+                {
+                    if (t.Placement)
+                        displacement[a.Id] = Displacement(a.Geometry.BBox, rigid);
+                    Check(t.Placement, false, () => new PropertyChange(PropertyKind.Transform, null, null,
+                        RigidFit.Describe(rigid, ctx.Header.Units, ctx.ShapeTolerance)));
+                }
                 Check(t.Shape, false, () => new PropertyChange(PropertyKind.Geometry, null, null, ShapeLabel(g)));
             }
         }
@@ -211,7 +225,7 @@ internal sealed class Comparer
     /// </summary>
     private static string? ShapeLabel(GeometryChange g) => g.Level switch
     {
-        GeometryLevel.Edited => g.Rigid is null ? "edited" : "moved + edited",
+        GeometryLevel.Edited => "edited",
         GeometryLevel.Reshaped => "reshaped",
         GeometryLevel.TopologyChanged => "topology changed: " + g.Detail,
         _ => null,
@@ -280,8 +294,14 @@ internal static class ChangeSets
     public static List<ChangeSet> Build(DiffContext ctx, List<ChangeRow> rows, IReadOnlyList<Pair> pairs, Flagger flags)
     {
         var sets = new List<ChangeSet>();
-        // Labels are for display: rows group by the change, the ids behind it, its cause and its flags.
-        foreach (var g in rows.GroupBy(r => (r.Change, r.Identity, r.Cause, Flags: Key(flags.ForRow(r)))))
+        // Labels are for display: rows group by the change, the ids behind it, its cause and its flags. Mass change
+        // is judged on the whole identical change, before per-object flags split it.
+        var flagged = rows.GroupBy(r => (r.Change, r.Identity, r.Cause)).SelectMany(g =>
+        {
+            bool mass = flags.IsMassChange(g.Key.Change, g.Key.Cause, g.Select(r => r.Pair));
+            return g.Select(r => (Row: r, Flags: Key(mass ? flags.ForRow(r).Append(Detectors.MassChange) : flags.ForRow(r))));
+        });
+        foreach (var g in flagged.GroupBy(x => (x.Row.Change, x.Row.Identity, x.Row.Cause, x.Flags), x => x.Row))
         {
             var (c, identity, cause, flagKey) = g.Key;
             sets.Add(new ChangeSet

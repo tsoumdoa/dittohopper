@@ -248,7 +248,12 @@ public class GeometryLadderTests
         Assert.Equal((GeometryLevel.Edited, "moved 120 mm in X, then 1 of 6 control points moved: #3 by 30 mm"), (change.Level, change.Detail));
         Assert.True(change.Rigid!.AlmostEquals(Xform.Translation(120, 0, 0), 1e-9));
         Assert.Equal([3], change.MovedIndices);
-        Assert.Equal("moved + edited", Assert.Single(r.ChangeSets).Change!.To);
+        // The rigid part is a placement change, so it shares a set with equal moves; the residual is a shape change.
+        Assert.Equal(["edited", "moved 120 mm in X"], r.ChangeSets.Select(s => s.Change!.To!).Order(StringComparer.Ordinal));
+        // With Shape off the move still reports: the toggle hides only the residual edit.
+        var placementOnly = ModelDiff.Diff(a.Build(), b.Build(), new DiffSettings { Toggles = new PropertyToggles { Shape = false } }, g);
+        Assert.Equal("moved 120 mm in X", Assert.Single(placementOnly.ChangeSets).Change!.To);
+        Assert.Equal(0, placementOnly.UnchangedObjects);
     }
 
     [Fact]
@@ -292,5 +297,47 @@ public class GeometryLadderTests
         var change = Assert.Single(r.Geometry);
         Assert.Equal((GeometryLevel.TopologyChanged, "solid became open, face removed or merged"), (change.Level, change.Detail));
         Assert.Equal("topology changed: solid became open, face removed or merged", Assert.Single(r.ChangeSets).Change!.To);
+    }
+
+    [Fact]
+    public void Step4_ATopologyFlipIsNeverAnEdit()
+    {
+        // An open polyline closed by moving its last vertex onto its first; then two mesh pieces joined into one.
+        var a = new SnapshotBuilder();
+        var layer = a.Layer("L");
+        var curve = a.Object(layer);
+        var mesh = a.Object(layer, o => o with { Kind = ObjectKind.Mesh, Geometry = o.Geometry with { Closed = true, Faces = 8, Components = 2 } });
+        var b = a.Clone();
+        b.Edit(curve, o => o with { Geometry = o.Geometry with { Hash = 1, Closed = true } });
+        b.Edit(mesh, o => o with { Geometry = o.Geometry with { Hash = 2, Components = 1 } });
+        Vec3[] open = [new(0, 0, 0), new(100, 0, 0), new(100, 100, 0), new(0, 100, 0)];
+        var g = new FakeGeometry();
+        g.Arrays[curve] = new StructureArrays(open, [open[0], open[1], open[2], open[0]], true, true, PointOrder.Fixed);
+        g.Unmoved[mesh] = 30;
+
+        var r = ModelDiff.Diff(a.Build(), b.Build(), geometry: g);
+        Assert.Equal([(GeometryLevel.TopologyChanged, "open curve became closed"), (GeometryLevel.TopologyChanged, "pieces joined")],
+            r.Geometry.OrderBy(x => x.A).Select(x => (x.Level, x.Detail!)));
+    }
+
+    [Fact]
+    public void Step4_AReversedMoveIsFittedTheRightWayRound_AndATieAbstains()
+    {
+        var (a, b, ids) = Edited(1);
+        Vec3[] start = [new(0, 0, 0), new(100, 0, 0), new(100, 100, 0), new(0, 100, 0), new(10, 10, 0)];
+        var end = start.Select(p => p + new Vec3(500, 0, 0)).ToArray();
+        end[4] += new Vec3(0, 10, 0);
+        var g = new FakeGeometry();
+        g.Arrays[ids[0]] = new StructureArrays(start, [.. Enumerable.Reverse(end)], true, true, PointOrder.Open);
+        var change = Assert.Single(ModelDiff.Diff(a.Build(), b.Build(), geometry: g).Geometry);
+        Assert.Equal("direction flipped; moved 500 mm in X, then 1 of 5 vertices moved: #4 by 10 mm", change.Detail);
+
+        // A Z shape is its own reverse rotated 180°: both ways round explain three of four points, differently.
+        Vec3[] z = [new(0, 0, 0), new(100, 0, 0), new(0, 100, 0), new(100, 100, 0)];
+        var zEnd = z.Select(p => p + new Vec3(500, 0, 0)).ToArray();
+        zEnd[1] += new Vec3(0, 0, 10);
+        g.Arrays[ids[0]] = new StructureArrays(z, zEnd, true, true, PointOrder.Open);
+        g.Unmoved[ids[0]] = 600;
+        Assert.Equal(GeometryLevel.Reshaped, Assert.Single(ModelDiff.Diff(a.Build(), b.Build(), geometry: g).Geometry).Level);
     }
 }

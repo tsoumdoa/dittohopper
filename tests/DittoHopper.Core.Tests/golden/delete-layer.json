@@ -18,7 +18,9 @@
     "units": "millimeters",
     "tolerance": 0.01,
     "hashGridsMatch": true,
-    "notes": []
+    "notes": [
+      "B doesn't record a current layer (files don't), so the default-layer detector checks only moves to the Default layer."
+    ]
   },
   "settings": {
     "stableKey": "diff:uid",
@@ -60,6 +62,7 @@
       "inferred": false,
       "confidence": 1,
       "affectedObjects": 4,
+      "flags": [],
       "review": "unreviewed"
     }
   ],

@@ -55,6 +55,14 @@ public class DetectorTests
         Assert.Equal([Detectors.DefaultLayer], SetOf(r, x).Flags);
         Assert.Equal([Detectors.DefaultLayer], SetOf(r, y).Flags);
         Assert.Empty(SetOf(r, z).Flags);
+        Assert.DoesNotContain(r.Header.Notes, n => n.Contains("current layer"));
+    }
+
+    [Fact]
+    public void DefaultLayer_AFileWithoutACurrentLayerSaysSoInTheHeader()
+    {
+        var r = Fixtures.Diff(Fixtures.DefaultLayer());
+        Assert.Contains("B doesn't record a current layer (files don't), so the default-layer detector checks only moves to the Default layer.", r.Header.Notes);
     }
 
     private sealed class MoveEverything(double dx) : IGeometryService
@@ -89,6 +97,19 @@ public class DetectorTests
     }
 
     [Fact]
+    public void TinyNudge_TheThresholdFollowsTheAbsoluteToleranceNotTheShapeTolerance()
+    {
+        var a = new SnapshotBuilder();
+        var plate = a.Instance(a.Layer("Blocks"), a.Block("Bracket"));
+        var b = a.Clone();
+        b.Edit(plate, o => o with { InstanceXform = Xform.Translation(3, 0, 0) });
+
+        // Tolerance 0.01 mm, so the nudge threshold is 0.1 mm: a 3 mm move is deliberate, even with a 1 mm shape tolerance.
+        var set = Assert.Single(ModelDiff.Diff(a.Build(), b.Build(), new DiffSettings { ShapeTolerance = 1 }).ChangeSets);
+        Assert.Empty(set.Flags);
+    }
+
+    [Fact]
     public void ByLayerOverride_FlagsAByLayerValueSetOnTheObject()
     {
         var a = new SnapshotBuilder();
@@ -116,6 +137,12 @@ public class DetectorTests
         var b = a.Clone();
         b.Object(layer);   // new, with a hash of its own
         Assert.Empty(Assert.Single(ModelDiff.Diff(a.Build(), b.Build()).ChangeSets).Flags);
+
+        // Two new objects that coincide with each other but with nothing that was there: added, not duplicates.
+        var c = a.Clone();
+        c.Object(layer, hash: 77);
+        c.Object(layer, hash: 77);
+        Assert.Empty(Assert.Single(ModelDiff.Diff(a.Build(), c.Build()).ChangeSets).Flags);
     }
 
     [Fact]
@@ -180,6 +207,26 @@ public class DetectorTests
         var r = ModelDiff.Diff(a.Build(), b.Build());
         Assert.DoesNotContain(Detectors.MassChange, SetOf(r, onSiblings[0]).Flags);
         Assert.Contains(Detectors.MassChange, SetOf(r, onUnrelated[0]).Flags);
+    }
+
+    [Fact]
+    public void MassChange_IsJudgedBeforeOtherFlagsSplitTheChange_AndLayersRelateByTopLevelAncestor()
+    {
+        var a = new SnapshotBuilder();
+        var level = a.Layer("L00");
+        var nested = new[] { a.Layer("Walls", level), a.Layer("Panels", a.Layer("Facade", level)), a.Layer("Columns", a.Layer("Structure", level)) };
+        var top = new[] { a.Layer("Facade"), a.Layer("Roof"), a.Layer("MEP", locked: true) };
+        var under = nested.Select(l => a.Object(l)).ToList();
+        var across = top.Select(l => a.Object(l)).ToList();
+        var b = a.Clone();
+        under.ForEach(id => b.Edit(id, o => o with { Name = "one level" }));
+        across.ForEach(id => b.Edit(id, o => o with { Name = "checked" }));
+
+        var r = ModelDiff.Diff(a.Build(), b.Build());
+        Assert.DoesNotContain(Detectors.MassChange, SetOf(r, under[0]).Flags);   // all under L00
+        // The locked layer splits the change into two sets; both are part of the same mass change.
+        Assert.Equal([[Detectors.MassChange], [Detectors.LockedOrHiddenLayer, Detectors.MassChange]],
+            across.Select(id => SetOf(r, id)).Distinct().Select(x => x.Flags.ToArray()).OrderBy(f => f.Length));
     }
 
     [Fact]

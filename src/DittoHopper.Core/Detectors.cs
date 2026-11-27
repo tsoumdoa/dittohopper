@@ -12,19 +12,23 @@ public static class Detectors
     public const string OutsideScope = "outside-scope";
     /// <summary>Objects moved to the top-level Default layer, or to B's current layer (known for documents only).</summary>
     public const string DefaultLayer = "default-layer";
-    /// <summary>Moved more than the shape tolerance but less than the nudge threshold (<see cref="DiffSettings.NudgeFactor"/>).</summary>
+    /// <summary>
+    /// Moved more than the absolute tolerance but less than the nudge threshold: <see cref="DiffSettings.NudgeFactor"/>
+    /// × the absolute tolerance, whatever <see cref="DiffSettings.ShapeTolerance"/> says.
+    /// </summary>
     public const string TinyNudge = "tiny-nudge";
     /// <summary>Color, material or linetype source changed from ByLayer to ByObject.</summary>
     public const string ByLayerOverride = "bylayer-override";
-    /// <summary>An added object with the same kind and geometry hash as another object in B.</summary>
+    /// <summary>An added object with the same kind and geometry hash as a matched (surviving) object in B.</summary>
     public const string Duplicate = "duplicate";
     /// <summary>A change to an object whose layer, or a parent of it, was locked or hidden in A.</summary>
     public const string LockedOrHiddenLayer = "locked-or-hidden-layer";
     /// <summary>At most <see cref="LoneDeletionMax"/> objects removed from a layer where nothing else changed.</summary>
     public const string LoneDeletion = "lone-deletion";
     /// <summary>
-    /// The same change on objects across at least <see cref="MassChangeLayers"/> unrelated layers. Layers are related
-    /// when one contains the other or they share a parent. Shape changes and changes with a root cause don't count.
+    /// The same change on objects under at least <see cref="MassChangeLayers"/> unrelated layers: layers are related
+    /// when they share a top-level ancestor. Judged before per-object flags split the change. Shape changes, fuzzy
+    /// pairings and changes with a root cause don't count.
     /// </summary>
     public const string MassChange = "mass-change";
     /// <summary>Objects paired by fuzzy score (matching pass 5): the pairing itself needs review.</summary>
@@ -73,8 +77,9 @@ public static class LayerGlob
 }
 
 /// <summary>
-/// Runs the detectors. Per-object flags are part of a change set's signature (<see cref="ChangeSets"/>); lone
-/// deletion and mass change are judged on whole sets once the sets and layer rows exist.
+/// Runs the detectors. Per-object flags, and mass change for a whole identical change, are part of a change set's
+/// signature (<see cref="ChangeSets"/>); lone deletion is judged on whole sets once the layer rows exist. Scope also
+/// flags layer table events.
 /// </summary>
 internal sealed class Flagger
 {
@@ -90,7 +95,9 @@ internal sealed class Flagger
         this.ctx = ctx;
         this.displacement = displacement;
         fuzzy = [.. pairs.Where(p => p.By == MatchedBy.Fuzzy).Select(p => p.A.Id)];
-        duplicates = [.. ctx.B.Objects.GroupBy(o => (o.Kind, o.Geometry.Hash)).Where(g => g.Count() > 1).SelectMany(g => g.Select(o => o.Id))];
+        var survivors = pairs.Select(p => (p.B.Kind, p.B.Geometry.Hash)).ToHashSet();
+        var matchedB = pairs.Select(p => p.B.Id).ToHashSet();
+        duplicates = [.. ctx.B.Objects.Where(o => !matchedB.Contains(o.Id) && survivors.Contains((o.Kind, o.Geometry.Hash))).Select(o => o.Id)];
         foreach (var e in ctx.Layers.Entries) layerBToA[e.B] = e.A;
         foreach (var (a, split) in ctx.Splits)
             foreach (var (b, _) in split.Targets) layerBToA.TryAdd(b, a);
@@ -107,7 +114,7 @@ internal sealed class Flagger
             yield return Detectors.OutsideScope;
         if (c.Property == PropertyKind.Layer && IsDefaultOrCurrent(b.LayerId))
             yield return Detectors.DefaultLayer;
-        double tol = ctx.ShapeTolerance;
+        double tol = ctx.Tolerance;
         if (c.Property == PropertyKind.Transform && displacement.TryGetValue(a.Id, out double d)
             && d > tol && d < ctx.Settings.NudgeFactor * tol)
             yield return Detectors.TinyNudge;
@@ -138,7 +145,21 @@ internal sealed class Flagger
             yield return Detectors.LockedOrHiddenLayer;
     }
 
-    /// <summary>Adds the set-level flags: lone deletion and mass change.</summary>
+    /// <summary>
+    /// Mass change: the same modification, with no root cause, on objects under at least
+    /// <see cref="Detectors.MassChangeLayers"/> different top-level layers.
+    /// </summary>
+    public bool IsMassChange(PropertyChange change, string? cause, IEnumerable<ObjectPair> objects) =>
+        cause is null && change.Property is not (PropertyKind.Geometry or PropertyKind.BlockContent or PropertyKind.Pairing)
+        && objects.Select(p => TopLevel(ctx.A.ObjectById[p.A!.Value].LayerId)).Distinct().Count() >= Detectors.MassChangeLayers;
+
+    /// <summary>Flags layer table events outside the declared scope: any layer they touch, in A or B, misses the glob.</summary>
+    public List<TableEvent> ForEvents(IEnumerable<TableEvent> events) => [.. events.Select(e =>
+        e.Table == TableKind.Layer
+        && ((e.A is Guid a && OutsideA(a)) || (e.B is Guid b && OutsideB(b)) || e.Shares.Any(x => OutsideB(x.B)))
+            ? e with { Flags = [Detectors.OutsideScope] } : e)];
+
+    /// <summary>Adds the set-level flag: lone deletion.</summary>
     public List<ChangeSet> ForSets(List<ChangeSet> sets, IReadOnlyList<LayerRow> layers)
     {
         var byId = sets.ToDictionary(s => s.Id);
@@ -151,10 +172,6 @@ internal sealed class Flagger
                 && row.Events.Count == 0 && row.ChangeSets.All(id => byId[id].Kind == ChangeKind.Removed)
                 && row.ChangeSets.Sum(id => byId[id].Objects.Count) <= Detectors.LoneDeletionMax)
                 extra.Add(Detectors.LoneDeletion);
-            if (s.Kind == ChangeKind.Modified && s.RootCauseEventId is null
-                && s.Change!.Property is not (PropertyKind.Geometry or PropertyKind.BlockContent)
-                && UnrelatedLayers(s.Objects.Select(p => ctx.A.ObjectById[p.A!.Value].LayerId)) >= Detectors.MassChangeLayers)
-                extra.Add(Detectors.MassChange);
             return extra.Count == 0 ? s : s with { Flags = [.. s.Flags.Concat(extra).Order(StringComparer.Ordinal)] };
         })];
     }
@@ -175,34 +192,11 @@ internal sealed class Flagger
         return false;
     }
 
-    /// <summary>How many groups the A layers fall into when layers that contain one another or share a parent are joined.</summary>
-    private int UnrelatedLayers(IEnumerable<Guid> layers)
+    /// <summary>The layer's top-level ancestor in A (itself when it has no parent). Parent cycles were rejected on reading.</summary>
+    private Guid TopLevel(Guid layer)
     {
-        var ids = layers.Distinct().Where(ctx.A.LayerById.ContainsKey).Order().ToList();
-        var root = ids.ToDictionary(x => x, x => x);
-        Guid Find(Guid x)
-        {
-            while (root[x] != x) x = root[x];
-            return x;
-        }
-        for (int i = 0; i < ids.Count; i++)
-            for (int j = i + 1; j < ids.Count; j++)
-                if (Related(ids[i], ids[j]))
-                    root[Find(ids[j])] = Find(ids[i]);
-        return ids.Select(Find).Distinct().Count();
-    }
-
-    private bool Related(Guid x, Guid y)
-    {
-        var (lx, ly) = (ctx.A.LayerById[x], ctx.A.LayerById[y]);
-        return (lx.ParentId is not null && lx.ParentId == ly.ParentId) || Contains(x, y) || Contains(y, x);
-    }
-
-    private bool Contains(Guid ancestor, Guid layer)
-    {
-        for (var l = ctx.A.LayerById[layer]; l.ParentId is Guid p && ctx.A.LayerById.TryGetValue(p, out var parent); l = parent)
-            if (p == ancestor)
-                return true;
-        return false;
+        while (ctx.A.LayerById.TryGetValue(layer, out var l) && l.ParentId is Guid p)
+            layer = p;
+        return layer;
     }
 }

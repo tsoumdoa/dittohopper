@@ -25,6 +25,7 @@ public static class ModelDiff
             .OrderBy(e => e.Table).ThenBy(e => e.Label, StringComparer.Ordinal).ThenBy(e => e.Kind)
             .ThenBy(e => e.Property).ThenBy(e => e.Id, StringComparer.Ordinal).ToList();
         var flags = new Flagger(ctx, pairs, compared.Displacement);
+        events = flags.ForEvents(events);
         var sets = ChangeSets.Build(ctx, compared.Rows, pairs, flags);
         var layers = LayerRows.Build(ctx, sets, events);
         sets = flags.ForSets(sets, layers);
@@ -87,6 +88,8 @@ internal sealed class DiffContext
         if (!(settings.FuzzyThreshold > 0 && settings.FuzzyThreshold <= 1))
             throw new ArgumentOutOfRangeException(nameof(settings), "FuzzyThreshold must be above 0 and at most 1.");
         (Header, Scale) = MakeHeader(a.Info, b.Info, hasBlocks: a.Blocks.Count + b.Blocks.Count > 0);
+        if (b.CurrentLayerId is null)
+            Header = Header with { Notes = [.. Header.Notes, "B doesn't record a current layer (files don't), so the default-layer detector checks only moves to the Default layer."] };
         double grid = Math.Max(a.Info.HashGrid, b.Info.HashGrid * Scale);
         HashProvesUnchanged = ShapeTolerance >= grid * (1 - 1e-9);
         if (!HashProvesUnchanged)

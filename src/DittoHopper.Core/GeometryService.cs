@@ -49,8 +49,8 @@ public sealed record StructureArrays(IReadOnlyList<Vec3> A, IReadOnlyList<Vec3> 
 /// <summary>
 /// The geometry ladder, for a matched pair whose hash differs (step 1). Step 2: the same shape within shape
 /// tolerance means Data-only. Step 3: a rigid fit of the corresponding points, accepted when both the fit's
-/// residual and the moved shape's deviation are within shape tolerance, means Moved. Steps 4 (Edited) and 5
-/// (Reshaped or Topology changed) are in <see cref="GeometryEdits"/>. A pair the service can't measure stays
+/// residual and the moved shape's deviation are within shape tolerance, means Moved. Then a changed topology
+/// summary means Topology changed; otherwise steps 4 (Edited) and 5 (Reshaped) are in <see cref="GeometryEdits"/>. A pair the service can't measure stays
 /// Unclassified.
 /// </summary>
 internal static class GeometryLadder
@@ -93,6 +93,9 @@ internal static class GeometryLadder
             };
         }
 
+        // A topology change (an open polyline closed by one vertex, two mesh pieces joined) is never an edit.
+        if (GeometryEdits.TopologyChanged(a, b, change) is { } broke)
+            return broke;
         if (service.Structure(a.Id, b.Id) is { } arrays && GeometryEdits.Edited(ctx, a, arrays, change) is { } edited)
             return edited;
         return GeometryEdits.Reshaped(ctx, service, a, b, change);

@@ -21,8 +21,8 @@ public sealed record DiffSettings
     public double? ShapeTolerance { get; init; }
 
     /// <summary>
-    /// The nudge threshold is this many shape tolerances: a move longer than the shape tolerance but shorter than
-    /// the threshold is flagged as a possible slip (<see cref="Detectors.TinyNudge"/>).
+    /// The nudge threshold is this many absolute tolerances (the comparison's, never <see cref="ShapeTolerance"/>): a
+    /// move longer than the tolerance but shorter than the threshold is flagged as a possible slip (<see cref="Detectors.TinyNudge"/>).
     /// </summary>
     public double NudgeFactor { get; init; } = 10;
 

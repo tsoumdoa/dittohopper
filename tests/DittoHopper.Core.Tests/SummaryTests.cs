@@ -63,4 +63,21 @@ public class SummaryTests
         Assert.Equal(LayerState.ToCheck, moved["Default"]);
         Assert.Equal(LayerState.ToCheck, moved["Walls"]);
     }
+
+    [Fact]
+    public void ScopeAppliesToLayerTableEventsToo()
+    {
+        var a = new SnapshotBuilder();
+        var facade = a.Layer("Facade");
+        var roof = a.Layer("Roof");
+        a.Object(facade);
+        a.Object(roof);
+        var b = a.Clone();
+        b.EditLayer(roof, l => l with { Color = Fixtures.Red });
+
+        var r = Fixtures.Diff((a, b), new DiffSettings { ScopeGlob = "Facade" });
+        Assert.Equal([Detectors.OutsideScope], Assert.Single(r.TableEvents).Flags);
+        Assert.Equal("Outside Facade, 1 layer change. 1 layer is untouched.", DiffSummary.Sentence(r));
+        Assert.Equal((LayerState.ToCheck, 1), DiffSummary.Layers(r).Where(l => l.Row.Path == "Roof").Select(l => (l.State, l.ToCheck)).Single());
+    }
 }

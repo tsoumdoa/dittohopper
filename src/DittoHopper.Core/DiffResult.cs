@@ -87,7 +87,13 @@ public sealed record TableEvent
     /// material or linetype, or group members. Counted in B, or in A when the entry is gone from B.
     /// </summary>
     public int AffectedObjects { get; init; }
+    /// <summary>Detector ids: <see cref="Detectors.OutsideScope"/> for a layer event outside the declared scope.</summary>
+    public IReadOnlyList<string> Flags { get; init; } = [];
     public ReviewState Review { get; init; }
+
+    /// <summary>Not yet marked intended, and flagged, as for <see cref="ChangeSet.NeedsLook"/>.</summary>
+    [JsonIgnore]
+    public bool NeedsLook => Review != ReviewState.Intended && Flags.Count > 0;
 }
 
 public enum MatchedBy { StableKey, Guid, GeometryHash, ShapeSignature, Fuzzy, Manual }
@@ -105,6 +111,8 @@ public enum PropertyKind
 {
     Layer, Name, Color, Material, Linetype, PrintWidth, DisplayOrder, UserText, Groups,
     Block, BlockContent, Transform, Geometry, Visible, Locked, Content,
+    /// <summary>A fuzzy pairing with no other change: the set that keeps it in review.</summary>
+    Pairing,
 }
 
 /// <summary>

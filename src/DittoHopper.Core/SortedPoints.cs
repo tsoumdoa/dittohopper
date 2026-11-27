@@ -24,8 +24,8 @@ internal sealed class SortedPoints
         keys = [.. order.Select(i => Coord(points[i], axis))];
     }
 
-    /// <summary>The nearest point that <paramref name="accept"/> allows, or (-1, ∞).</summary>
-    public (int Index, double Distance) Nearest(Vec3 p, Func<int, bool> accept)
+    /// <summary>The nearest point within <paramref name="limit"/> that <paramref name="accept"/> allows, or (-1, ∞).</summary>
+    public (int Index, double Distance) Nearest(Vec3 p, double limit, Func<int, bool> accept)
     {
         double c = Coord(p, axis);
         int hi = LowerBound(c), lo = hi - 1, best = -1;
@@ -34,12 +34,12 @@ internal sealed class SortedPoints
         {
             double gapLo = lo >= 0 ? c - keys[lo] : double.PositiveInfinity;
             double gapHi = hi < order.Length ? keys[hi] - c : double.PositiveInfinity;
-            if (Math.Min(gapLo, gapHi) > bestDistance)
+            if (Math.Min(gapLo, gapHi) > Math.Min(bestDistance, limit))
                 break;
             int k = gapLo <= gapHi ? order[lo--] : order[hi++];
-            if (!accept(k))
-                continue;
             double d = Vec3.Distance(p, points[k]);
+            if (d > limit || !accept(k))
+                continue;
             if (d < bestDistance || (d == bestDistance && k < best))
                 (best, bestDistance) = (k, d);
         }

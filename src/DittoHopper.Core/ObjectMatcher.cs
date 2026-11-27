@@ -67,11 +67,12 @@ internal sealed class ObjectMatcher
     /// <summary>
     /// Pass 4: the same position-free shape, then the nearest candidate by centroid. The same shape is the same kind
     /// family and topology summary, and length, boundary length, area and volume within tolerance; for instances,
-    /// the same definition through the block map. A pair is claimed only when each is the other's nearest, the move
-    /// is no longer than the object's own size, and no other candidate is within twice the distance. Several
-    /// candidates within tolerance (coincident copies) are told apart by their own attributes, then GUID order.
-    /// Anything less certain is left to pass 5 or reported as removed + added: across a longer move, identical
-    /// objects can't be told apart.
+    /// the same definition through the block map. A pair is claimed only when each is the other's nearest within the
+    /// move limit (the object's own size), and no other candidate is within twice the distance. When the shape
+    /// repeats within reach on either side (another free candidate within the move limit), the move must also be
+    /// within the shape tolerance: a re-bake jittered across the hash grid, never a guess between identical
+    /// neighbours. Coincident candidates are told apart by their own attributes, then GUID order. Anything less
+    /// certain is left to pass 5 (marked for review) or reported as removed + added.
     /// </summary>
     private void ByShapeSignature()
     {
@@ -86,13 +87,14 @@ internal sealed class ObjectMatcher
             var indexB = new SortedPoints([.. poolB.Select(b => b.Geometry.Centroid * ctx.Scale)]);
             foreach (var a in poolA)
             {
-                if (Unique(a.Geometry.Centroid, poolB, indexB, b => SameShape(a, b), b => Agreement(a, b)) is not { } hit
-                    || hit.Distance > Math.Max(ctx.Tolerance, Diagonal(a.Geometry.BBox)))
+                double limit = Math.Max(ctx.Tolerance, Diagonal(a.Geometry.BBox));
+                if (Unique(a.Geometry.Centroid, limit, poolB, indexB, b => SameShape(a, b), b => Agreement(a, b)) is not { } hit)
                     continue;
                 var b = hit.Match;
-                if (Unique(b.Geometry.Centroid * ctx.Scale, poolA, indexA, x => SameShape(x, b), x => Agreement(x, b)) is { } back
-                    && back.Match.Id == a.Id)
-                    found.Add((a, b));
+                if (Unique(b.Geometry.Centroid * ctx.Scale, limit, poolA, indexA, x => SameShape(x, b), x => Agreement(x, b)) is not { } back
+                    || back.Match.Id != a.Id || ((hit.Repeats || back.Repeats) && hit.Distance > ctx.ShapeTolerance))
+                    continue;
+                found.Add((a, b));
             }
         }
         // Mutual nearest pairs never share an object, so the claiming order can't change the outcome.
@@ -101,37 +103,44 @@ internal sealed class ObjectMatcher
     }
 
     /// <summary>
-    /// The only candidate near <paramref name="at"/>, or null when there is none or it is ambiguous: another
-    /// candidate lies within twice its distance. Candidates within tolerance are coincident; the most equal own
-    /// attributes, then GUID order, decide between them.
+    /// The only candidate within <paramref name="limit"/> of <paramref name="at"/>, or null when there is none or it
+    /// is ambiguous: another candidate lies within twice its distance. Candidates within tolerance are coincident;
+    /// the most equal own attributes, then GUID order, decide between them. Repeats: more than one candidate lies
+    /// within the limit.
     /// </summary>
-    private (ObjectRecord Match, double Distance)? Unique(Vec3 at, List<ObjectRecord> pool, SortedPoints index,
-        Func<ObjectRecord, bool> fits, Func<ObjectRecord, int> agreement)
+    private (ObjectRecord Match, double Distance, bool Repeats)? Unique(Vec3 at, double limit, List<ObjectRecord> pool,
+        SortedPoints index, Func<ObjectRecord, bool> fits, Func<ObjectRecord, int> agreement)
     {
-        var (k, d) = index.Nearest(at, i => fits(pool[i]));
+        var (k, d) = index.Nearest(at, limit, i => fits(pool[i]));
         if (k < 0)
             return null;
         double tol = ctx.Tolerance;
+        bool repeats = index.Within(at, limit).Count(i => fits(pool[i])) > 1;
         var close = index.Within(at, d <= tol ? tol : 2 * d).Where(i => fits(pool[i])).ToList();
         if (close.Count == 1)
-            return (pool[k], d);
+            return (pool[k], d, repeats);
         if (d > tol)
             return null;
-        return (close.Select(i => pool[i]).OrderByDescending(agreement).ThenBy(o => o.Id).First(), d);
+        return (close.Select(i => pool[i]).OrderByDescending(agreement).ThenBy(o => o.Id).First(), d, repeats);
     }
 
-    /// <summary>Kinds with a shape to compare: anything with a length, area or volume, and block instances.</summary>
+    /// <summary>
+    /// Objects with a shape to compare and a place to compare it at: anything with a length, area or volume, and
+    /// block instances, but only with a non-empty bounding box. An instance read from a file has no world bounds
+    /// (its centroid is the origin), so it could otherwise pair across any distance.
+    /// </summary>
     private static bool HasShape(ObjectRecord o) =>
-        o.Kind == ObjectKind.InstanceReference || o.Geometry.Length > 0 || o.Geometry.Area > 0 || o.Geometry.Volume > 0;
+        (o.Kind == ObjectKind.InstanceReference || o.Geometry.Length > 0 || o.Geometry.Area > 0 || o.Geometry.Volume > 0)
+        && Diagonal(o.Geometry.BBox) > 0;
 
-    private readonly record struct Shape(ObjectKind Family, bool Closed, int Faces, int BoundaryLoops, Guid? Definition);
+    private readonly record struct Shape(ObjectKind Family, bool Closed, int Faces, int BoundaryLoops, int Components, Guid? Definition);
 
     /// <summary>The exact half of the shape signature. An A instance's definition goes through the block map.</summary>
     private Shape ShapeKey(ObjectRecord o, bool fromA)
     {
         var g = o.Geometry;
         Guid? def = o.BlockDefinitionId is Guid d ? fromA ? ctx.Blocks.Map(d) ?? Guid.Empty : d : null;
-        return new Shape(ObjectKinds.Family(o.Kind), g.Closed, g.Faces, g.BoundaryLoops, def);
+        return new Shape(ObjectKinds.Family(o.Kind), g.Closed, g.Faces, g.BoundaryLoops, g.Components, def);
     }
 
     /// <summary>The measured half: length, boundary length, area and volume equal within the tolerance (scaled by size), and stable keys that allow it.</summary>
@@ -158,12 +167,22 @@ internal sealed class ObjectMatcher
     {
         var poolB = FreeB.Where(HasShape).Select(b => (B: b, Box: Padded(b.Geometry.BBox, ctx.Scale)))
             .OrderBy(x => x.Box.Min.X).ThenBy(x => x.B.Id).ToList();
+        // A sweep along X: a B box can overlap A only if it starts no more than the widest B box before A does.
+        double widest = poolB.Count == 0 ? 0 : poolB.Max(x => x.Box.Max.X - x.Box.Min.X);
         var candidates = new List<(ObjectRecord A, ObjectRecord B, double Score)>();
         foreach (var a in FreeA.Where(HasShape))
         {
             var boxA = Padded(a.Geometry.BBox, 1);
-            foreach (var (b, boxB) in poolB)
+            int start = 0, end = poolB.Count;
+            while (start < end)
             {
+                int mid = (start + end) / 2;
+                if (poolB[mid].Box.Min.X < boxA.Min.X - widest) start = mid + 1;
+                else end = mid;
+            }
+            for (int i = start; i < poolB.Count; i++)
+            {
+                var (b, boxB) = poolB[i];
                 if (boxB.Min.X > boxA.Max.X)
                     break;
                 if (!SameFamily(a, b) || !KeysAllow(a, b) || Overlap(boxA, boxB) is not (> 0 and var overlap))

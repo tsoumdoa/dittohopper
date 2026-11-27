@@ -174,4 +174,67 @@ public class ShapeMatchingTests
 
         Assert.Empty(ModelDiff.Diff(a.Build(), b.Build()).Matches);
     }
+
+    [Fact]
+    public void Pass4_ARepeatedShapeOnlyPairsWithinTheShapeTolerance()
+    {
+        // Two identical columns 600 apart: the first deleted, the second re-baked 500 closer. Never "moved".
+        var a = new SnapshotBuilder();
+        var layer = a.Layer("Columns");
+        var deleted = a.Solid(layer, new Vec3(0, 0, 0), size: 500);
+        var moved = a.Solid(layer, new Vec3(600, 0, 0), size: 500);
+        var b = a.Clone();
+        Rebaked(b, moved, o => o with { Geometry = SnapshotBuilder.SolidShape(0, new Vec3(100, 0, 0), 500) });
+        b.RemoveObject(deleted);
+        var r = ModelDiff.Diff(a.Build(), b.Build());
+        Assert.All(r.Matches, m => Assert.True(m.NeedsReview));
+
+        // Twins within reach, both re-baked with a jitter inside the shape tolerance: still paired, in place.
+        var c = new SnapshotBuilder();
+        var twins = new[] { c.Solid(layer, new Vec3(0, 0, 0)), c.Solid(layer, new Vec3(150, 0, 0)) };
+        var d = c.Clone();
+        var fresh = twins.Select(id => (id, Rebaked(d, id, MovedBy(0.004)))).ToList();
+        AssertPairs(ModelDiff.Diff(c.Build(), d.Build()), [.. fresh.Select(p => (p.id, p.Item2, MatchedBy.ShapeSignature))]);
+    }
+
+    [Fact]
+    public void Passes4And5_SkipObjectsWithoutWorldBounds()
+    {
+        // A block instance read from a file has an empty box at the origin, wherever it stands.
+        var a = new SnapshotBuilder();
+        var layer = a.Layer("Blocks");
+        var chair = a.Block("Chair");
+        var instance = a.Instance(layer, chair);
+        var b = a.Clone();
+        Rebaked(b, instance, o => o with { InstanceXform = Xform.Translation(5000, 0, 0) });
+
+        Assert.Empty(ModelDiff.Diff(a.Build(), b.Build()).Matches);
+    }
+
+    private sealed class SameShape : IGeometryService
+    {
+        public ShapeDeviation? Deviation(Guid a, Guid b, Xform? moveA, double tolerance) => new ShapeDeviation(0);
+        public PointCorrespondence? CorrespondingPoints(Guid a, Guid b) => null;
+        public string? DataOnlyReason(Guid a, Guid b) => "rebuilt";
+        public StructureArrays? Structure(Guid a, Guid b) => null;
+    }
+
+    [Fact]
+    public void Pass5_AFuzzyPairWithNoOtherChangeStaysInReview()
+    {
+        var a = new SnapshotBuilder();
+        var box = a.Solid(a.Layer("L"), new Vec3());
+        var b = a.Clone();
+        // A hair larger: not the same measures for pass 4, but the same shape within tolerance for the ladder.
+        var grown = Rebaked(b, box, o => o with { Geometry = SnapshotBuilder.SolidShape(0, new Vec3(), 100.015) });
+
+        // The service calls it the same shape (Data-only), so only the pairing itself is uncertain.
+        var r = ModelDiff.Diff(a.Build(), b.Build(), geometry: new SameShape());
+        Assert.Equal(GeometryLevel.DataOnly, Assert.Single(r.Geometry).Level);
+        Assert.Equal(0, r.UnchangedObjects);
+        var set = Assert.Single(r.ChangeSets);
+        Assert.Equal((PropertyKind.Pairing, new ObjectPair(box, grown)), (set.Change!.Property, set.Objects.Single()));
+        Assert.Equal([Detectors.FuzzyMatch], set.Flags);
+        Assert.EndsWith("1 pairing needs review.", DiffSummary.Sentence(r));
+    }
 }

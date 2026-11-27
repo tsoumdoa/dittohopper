@@ -185,4 +185,6 @@ public sealed record GeometrySignature
     public int BoundaryLoops { get; init; }
     /// <summary>Total length of the naked edges.</summary>
     public double BoundaryLength { get; init; }
+    /// <summary>Disconnected pieces of a mesh; 0 for other types.</summary>
+    public int Components { get; init; }
 }

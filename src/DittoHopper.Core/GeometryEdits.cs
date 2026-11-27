@@ -4,7 +4,9 @@ namespace DittoHopper.Core;
 /// Geometry ladder steps 4 and 5, for a pair that is neither the same shape nor rigidly moved. Step 4, Edited:
 /// the same structure, so control points or vertices compare index by index (after undoing a seam move or a
 /// flip), and the ones that moved are listed. When most of them moved, a rigid fit of the majority comes first,
-/// so a moved and edited object reads "moved …, then 1 of 16 control points moved" rather than all 16 moving.
+/// so a moved and edited object reads "moved …, then 1 of 16 control points moved" rather than all 16 moving. The
+/// fit tries the curve both ways round (and every seam of a short closed curve) and keeps the ordering that fits
+/// the most points; when two orderings fit equally many with different motions, it abstains (Reshaped).
 /// Polylines whose vertex counts differ get a sequence diff instead. Step 5: the same topology means Reshaped,
 /// with the deviation; otherwise Topology changed, with what broke.
 /// </summary>
@@ -15,6 +17,9 @@ internal static class GeometryEdits
 
     /// <summary>Above this many points, a closed curve is compared as stored, without trying every seam position.</summary>
     private const int MaxCycle = 2048;
+
+    /// <summary>Above this many points, a closed curve's rigid fit tries only its stored seam, both ways round.</summary>
+    private const int MaxFitCycle = 64;
 
     /// <summary>Above this many vertex pairs (n × m), polylines aren't sequence-diffed.</summary>
     private const long MaxSequenceCells = 4_000_000;
@@ -32,18 +37,28 @@ internal static class GeometryEdits
                 return null;
             string what = s.Polylines ? "vertices" : PointWord(a.Kind);
 
-            if (2 * moved.Count > n && RigidFit.FitMajority(s.A, b, tol) is { } fit
-                && !fit.Motion.Transform.AlmostEquals(Xform.Identity, tol) && fit.Inliers > n - moved.Count
-                && MovedPoints(s.A, b, tol, fit.Motion.Transform) is { Count: > 0 } residual)
+            if (2 * moved.Count > n)
             {
-                return change with
+                var fits = Orderings(s.B, s.Order, MaxFitCycle)
+                    .Select(o => (o.B, o.Note, Fit: RigidFit.FitMajority(s.A, o.B, tol)))
+                    .Where(f => f.Fit is { } x && !x.Motion.Transform.AlmostEquals(Xform.Identity, tol))
+                    .Select(f => (f.B, f.Note, Motion: f.Fit!.Value.Motion.Transform, f.Fit.Value.Inliers))
+                    .OrderByDescending(f => f.Inliers).ToList();   // stable: the stored order wins a tie with itself
+                if (fits.Count > 0 && fits[0].Inliers > n - moved.Count)
                 {
-                    Level = GeometryLevel.Edited,
-                    Detail = Note(note, RigidFit.Describe(fit.Motion.Transform, units, tol) + ", then " + Listing(residual, n, what, units, tol)),
-                    Rigid = GeometryLadder.Round(fit.Motion.Transform, tol),
-                    MaxDeviation = GeometryLadder.Round(residual.Max(m => m.Distance), tol),
-                    MovedIndices = [.. residual.Select(m => m.Index)],
-                };
+                    var best = fits[0];
+                    if (fits.Skip(1).Any(f => f.Inliers == best.Inliers && !f.Motion.AlmostEquals(best.Motion, tol)))
+                        return null;   // which way round it went can't be told
+                    if (MovedPoints(s.A, best.B, tol, best.Motion) is { Count: > 0 } residual)
+                        return change with
+                        {
+                            Level = GeometryLevel.Edited,
+                            Detail = Note(best.Note, RigidFit.Describe(best.Motion, units, tol) + ", then " + Listing(residual, n, what, units, tol)),
+                            Rigid = GeometryLadder.Round(best.Motion, tol),
+                            MaxDeviation = GeometryLadder.Round(residual.Max(m => m.Distance), tol),
+                            MovedIndices = [.. residual.Select(m => m.Index)],
+                        };
+                }
             }
             return change with
             {
@@ -74,12 +89,15 @@ internal static class GeometryEdits
     }
 
     /// <summary>Step 5. Null deviation (the pair can't be measured) leaves the change as it was: Unclassified.</summary>
-    public static GeometryChange Reshaped(DiffContext ctx, IGeometryService service, ObjectRecord a, ObjectRecord b, GeometryChange change)
+    /// <summary>Topology changed, with what broke, when the topology summaries differ; else null.</summary>
+    public static GeometryChange? TopologyChanged(ObjectRecord a, ObjectRecord b, GeometryChange change)
     {
         var broke = TopologyChanges(a, b);
-        if (broke.Count > 0)
-            return change with { Level = GeometryLevel.TopologyChanged, Detail = string.Join(", ", broke) };
+        return broke.Count == 0 ? null : change with { Level = GeometryLevel.TopologyChanged, Detail = string.Join(", ", broke) };
+    }
 
+    public static GeometryChange Reshaped(DiffContext ctx, IGeometryService service, ObjectRecord a, ObjectRecord b, GeometryChange change)
+    {
         double tol = ctx.ShapeTolerance;
         var (ba, bb) = (a.Geometry.BBox, b.Geometry.BBox);
         var lo = new Vec3(Math.Min(ba.Min.X, bb.Min.X * ctx.Scale), Math.Min(ba.Min.Y, bb.Min.Y * ctx.Scale), Math.Min(ba.Min.Z, bb.Min.Z * ctx.Scale));
@@ -99,7 +117,7 @@ internal static class GeometryEdits
         };
     }
 
-    /// <summary>What broke, from the topology summaries, worst first: closed or solid lost or gained, faces split or removed, boundary loops.</summary>
+    /// <summary>What broke, from the topology summaries, worst first: closed or solid lost or gained, mesh pieces, faces split or removed, boundary loops.</summary>
     private static List<string> TopologyChanges(ObjectRecord a, ObjectRecord b)
     {
         var (x, y) = (a.Geometry, b.Geometry);
@@ -119,6 +137,8 @@ internal static class GeometryEdits
                     break;
             }
         }
+        if (y.Components > x.Components) broke.Add("split into more pieces");
+        else if (y.Components < x.Components) broke.Add("pieces joined");
         if (y.Faces > x.Faces) broke.Add("face split or added");
         else if (y.Faces < x.Faces) broke.Add("face removed or merged");
         else if (x.Closed == y.Closed && y.BoundaryLoops > x.BoundaryLoops) broke.Add("boundary loop added");
@@ -146,23 +166,31 @@ internal static class GeometryEdits
     /// </summary>
     private static (IReadOnlyList<Vec3> B, string? Note) Align(IReadOnlyList<Vec3> a, IReadOnlyList<Vec3> b, PointOrder order, double tol)
     {
-        if (order == PointOrder.Fixed || (order == PointOrder.Closed && a.Count > MaxCycle))
-            return (b, null);
-        int n = a.Count, best = Untouched(a, b, tol);
         var result = (B: b, Note: (string?)null);
+        int best = -1;
+        foreach (var candidate in Orderings(b, order, MaxCycle))
+            if (Untouched(a, candidate.B, tol) is int untouched && untouched > best)
+                (best, result) = (untouched, candidate);
+        return result;
+    }
+
+    /// <summary>
+    /// B's points as stored first, then reversed (open and closed curves), and for a closed curve of at most
+    /// <paramref name="maxCycle"/> points every seam position both ways round, each with its note.
+    /// </summary>
+    private static IEnumerable<(IReadOnlyList<Vec3> B, string? Note)> Orderings(IReadOnlyList<Vec3> b, PointOrder order, int maxCycle)
+    {
+        yield return (b, null);
+        if (order == PointOrder.Fixed)
+            yield break;
+        int n = b.Count, seams = order == PointOrder.Closed && n <= maxCycle ? n : 1;
         foreach (bool flip in new[] { false, true })
         {
-            var source = flip ? [.. b.Reverse()] : b;
-            for (int k = 0; k < (order == PointOrder.Closed ? n : 1); k++)
-            {
-                if (!flip && k == 0) continue;
-                var candidate = k == 0 ? source : [.. Enumerable.Range(0, n).Select(i => source[(i + k) % n])];
-                int untouched = Untouched(a, candidate, tol);
-                if (untouched > best)
-                    (best, result) = (untouched, (candidate, string.Join(", ", new[] { k != 0 ? "seam moved" : null, flip ? "direction flipped" : null }.OfType<string>())));
-            }
+            IReadOnlyList<Vec3> source = flip ? [.. b.Reverse()] : b;
+            for (int k = flip ? 0 : 1; k < seams; k++)
+                yield return (k == 0 ? source : [.. Enumerable.Range(0, n).Select(i => source[(i + k) % n])],
+                    string.Join(", ", new[] { k != 0 ? "seam moved" : null, flip ? "direction flipped" : null }.OfType<string>()));
         }
-        return result;
     }
 
     private static int Untouched(IReadOnlyList<Vec3> a, IReadOnlyList<Vec3> b, double tol)

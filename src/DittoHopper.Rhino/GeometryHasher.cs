@@ -144,6 +144,7 @@ internal static class GeometryHasher
             Faces = summary?.Faces ?? 0,
             BoundaryLoops = summary?.Loops ?? 0,
             BoundaryLength = summary?.Boundary ?? 0,
+            Components = summary?.Components ?? 0,
         };
     }
 

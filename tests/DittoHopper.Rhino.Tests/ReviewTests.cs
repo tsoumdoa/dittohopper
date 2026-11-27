@@ -9,7 +9,7 @@ using RhinoDoc = Rhino.RhinoDoc;
 
 namespace DittoHopper.Rhino.Tests;
 
-/// <summary>Regression tests for the M2 review round 1 findings: one focused case each.</summary>
+/// <summary>Regression tests for review findings (M2 and M3): one focused case each.</summary>
 [Collection("Rhino")]
 [Trait("Category", "RhinoIntegration")]
 public sealed class ReviewTests(RhinoHost host)
@@ -275,5 +275,42 @@ public sealed class ReviewTests(RhinoHost host)
         snapshot.Dispose();
         Assert.Equal(Samples.All.Count, snapshot.Model.Objects.Count);
         Assert.Throws<ObjectDisposedException>(() => RhinoDiff.Diff(snapshot, snapshot));
+    });
+
+    /// <summary>Two closed tetrahedra, or one closed octahedron: both eight faces with no boundary.</summary>
+    private static Mesh Pieces(bool two)
+    {
+        var mesh = new Mesh();
+        if (two)
+            foreach (int x in new[] { 0, 30 })
+            {
+                int n = mesh.Vertices.Count;
+                mesh.Vertices.Add(x, 0, 0);
+                mesh.Vertices.Add(x + 10, 0, 0);
+                mesh.Vertices.Add(x, 10, 0);
+                mesh.Vertices.Add(x, 0, 10);
+                mesh.Faces.AddFace(n, n + 2, n + 1);
+                mesh.Faces.AddFace(n, n + 1, n + 3);
+                mesh.Faces.AddFace(n + 1, n + 2, n + 3);
+                mesh.Faces.AddFace(n + 2, n, n + 3);
+            }
+        else
+        {
+            foreach (var (x, y, z) in new[] { (0, 0, 0), (10, 0, 0), (10, 10, 0), (0, 10, 0), (5, 5, 10), (5, 5, -10) })
+                mesh.Vertices.Add(x, y, z);
+            for (int i = 0; i < 4; i++)
+            {
+                mesh.Faces.AddFace(i, (i + 1) % 4, 4);
+                mesh.Faces.AddFace((i + 1) % 4, i, 5);
+            }
+        }
+        return mesh;
+    }
+
+    [RhinoFact]
+    public void TwoMeshPiecesJoinedIntoOneIsATopologyChange() => host.Run(() =>
+    {
+        var g = Assert.Single(Compare(Pieces(true), Pieces(false)).Geometry);
+        Assert.Equal((GeometryLevel.TopologyChanged, "pieces joined"), (g.Level, g.Detail));
     });
 }

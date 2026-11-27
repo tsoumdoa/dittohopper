@@ -198,9 +198,9 @@ Each detector flags a whole change set, and a flagged set goes to "Needs a look"
 | Duplicate | An added object has the same geometry hash as an existing one | Exact hash | Copy in place |
 | Edit on locked or hidden layer | Something changed on a layer that was locked or hidden in A | Any | Should not be possible by hand |
 | Lone deletion | A few objects removed from a layer where nothing else changed | ≤ 3 objects (starting value) | Stray Delete key |
-| Mass identical change | The same change on many objects across unrelated layers | ≥ 3 layers (starting value) | Select-all, then a change |
+| Mass identical change | The same change on many objects across unrelated layers (related = same top-level ancestor) | ≥ 3 layers (starting value) | Select-all, then a change |
 
-Rule: a set needs a look when it is not yet marked intended, and it is either flagged or outside scope. Sets that hold fuzzy pairs (pass 5) are flagged too, so a low-confidence pairing never reads as certain.
+Rule: a set needs a look when it is not yet marked intended, and it is either flagged or outside scope. Sets that hold fuzzy pairs (pass 5) are flagged too, and a fuzzy pair with no other change still gets a Pairing set, so a low-confidence pairing never reads as certain or as identical.
 
 ## UX
 
