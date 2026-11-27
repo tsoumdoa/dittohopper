@@ -14,12 +14,15 @@ internal readonly record struct ChangeRow(PropertyChange Change, string? Identit
 /// </summary>
 internal sealed class Comparer
 {
-    public sealed record Output(List<ChangeRow> Rows, List<Match> Matches, List<GeometryChange> Geometry, int UnchangedObjects);
+    /// <param name="Displacement">For each A object with a placement change: the farthest any corner of its box moved.</param>
+    public sealed record Output(List<ChangeRow> Rows, List<Match> Matches, List<GeometryChange> Geometry, int UnchangedObjects,
+        Dictionary<Guid, double> Displacement);
 
     private readonly DiffContext ctx;
     private readonly Dictionary<Guid, GeometryChange> ladder;
     private readonly List<ChangeRow> rows = [];
     private readonly List<GeometryChange> geometry = [];
+    private readonly Dictionary<Guid, double> displacement = [];
 
     private Comparer(DiffContext ctx, Dictionary<Guid, GeometryChange> ladder) => (this.ctx, this.ladder) = (ctx, ladder);
 
@@ -34,7 +37,7 @@ internal sealed class Comparer
             matches.Add(new Match(p.A.Id, p.B.Id, p.By, p.Confidence, unchanged));
             if (changed == 0) unchangedObjects++;
         }
-        return new Output(c.rows, matches, c.geometry, unchangedObjects);
+        return new Output(c.rows, matches, c.geometry, unchangedObjects, c.displacement);
     }
 
     /// <summary>
@@ -126,7 +129,9 @@ internal sealed class Comparer
             Check(t.BlockDefinition, da is Guid x ? db is Guid y && ctx.Blocks.Map(x) == y : db is null,
                 () => new PropertyChange(PropertyKind.Block, null, da is Guid x ? sa.BlockLabel(x) : null, db is Guid y ? sb.BlockLabel(y) : null),
                 identity: Ids(da?.ToString(), db?.ToString()));
-            var (samePlace, placement) = Placement(a.InstanceXform, b.InstanceXform?.ScaleTranslation(ctx.Scale));
+            var (samePlace, placement, delta) = Placement(a.InstanceXform, b.InstanceXform?.ScaleTranslation(ctx.Scale));
+            if (t.Placement && !samePlace && delta is not null)
+                displacement[a.Id] = Displacement(a.Geometry.BBox, delta);
             Check(t.Placement, samePlace, placement);
 
             // A definition edit is one table event; only edits nested inside the instance's definition are
@@ -151,9 +156,15 @@ internal sealed class Comparer
             if (g.Level == GeometryLevel.DataOnly)
                 unchanged++;
             else if (g.Level == GeometryLevel.Moved)
+            {
+                if (t.Placement)
+                    displacement[a.Id] = Displacement(a.Geometry.BBox, g.Rigid!);
                 Check(t.Placement, false, () => new PropertyChange(PropertyKind.Transform, null, null, g.Detail));
+            }
             else
+            {
                 Check(t.Shape, false, () => new PropertyChange(PropertyKind.Geometry, null, null, ShapeLabel(g)));
+            }
         }
         else if (t.Placement || t.Shape)
         {
@@ -167,17 +178,31 @@ internal sealed class Comparer
     /// Instance placement compares as a delta, B relative to A, so the same move of many instances is one
     /// change. The change describes the delta; a non-invertible A transform falls back to both matrices.
     /// </summary>
-    private (bool Same, Func<PropertyChange> Change) Placement(Xform? xa, Xform? xb)
+    private (bool Same, Func<PropertyChange> Change, Xform? Delta) Placement(Xform? xa, Xform? xb)
     {
         double tol = ctx.ShapeTolerance;
         if (xa?.Inverse() is { } inverse && xb is not null)
         {
             var delta = xb.After(inverse);
             return (delta.AlmostEquals(Xform.Identity, tol),
-                () => new PropertyChange(PropertyKind.Transform, null, null, RigidFit.Describe(delta, ctx.Header.Units, tol)));
+                () => new PropertyChange(PropertyKind.Transform, null, null, RigidFit.Describe(delta, ctx.Header.Units, tol)), delta);
         }
         return (xa is null ? xb is null : xb is not null && xa.AlmostEquals(xb, tol),
-            () => new PropertyChange(PropertyKind.Transform, null, xa?.ToString(), xb?.ToString()));
+            () => new PropertyChange(PropertyKind.Transform, null, xa?.ToString(), xb?.ToString()), null);
+    }
+
+    /// <summary>The farthest any corner of the box moves under the transform.</summary>
+    private static double Displacement(BBox box, Xform move)
+    {
+        double max = 0;
+        foreach (double x in new[] { box.Min.X, box.Max.X })
+            foreach (double y in new[] { box.Min.Y, box.Max.Y })
+                foreach (double z in new[] { box.Min.Z, box.Max.Z })
+                {
+                    var corner = new Vec3(x, y, z);
+                    max = Math.Max(max, Vec3.Distance(move.Apply(corner), corner));
+                }
+        return max;
     }
 
     /// <summary>
@@ -246,34 +271,38 @@ internal static class Sourcing
     public static string? Norm(string? s) => string.IsNullOrEmpty(s) ? null : s;
 }
 
-/// <summary>Groups change rows and leftover objects into change sets with stable ids and a stable order.</summary>
+/// <summary>
+/// Groups change rows and leftover objects into change sets with stable ids and a stable order. Each object's
+/// detector flags are part of its signature, so a flagged object never hides in an unflagged set.
+/// </summary>
 internal static class ChangeSets
 {
-    public static List<ChangeSet> Build(DiffContext ctx, List<ChangeRow> rows, IReadOnlyList<Pair> pairs)
+    public static List<ChangeSet> Build(DiffContext ctx, List<ChangeRow> rows, IReadOnlyList<Pair> pairs, Flagger flags)
     {
         var sets = new List<ChangeSet>();
-        // Labels are for display: rows group by the change, the ids behind it and its cause.
-        foreach (var g in rows.GroupBy(r => (r.Change, r.Identity, r.Cause)))
+        // Labels are for display: rows group by the change, the ids behind it, its cause and its flags.
+        foreach (var g in rows.GroupBy(r => (r.Change, r.Identity, r.Cause, Flags: Key(flags.ForRow(r)))))
         {
-            var (c, identity, cause) = g.Key;
+            var (c, identity, cause, flagKey) = g.Key;
             sets.Add(new ChangeSet
             {
-                Id = StableId.From("cs", nameof(ChangeKind.Modified), c.Property.ToString(), c.Key, c.From, c.To,
-                    c.FromSource?.ToString(), c.ToSource?.ToString(), identity, cause),
+                Id = StableId.From("cs", [nameof(ChangeKind.Modified), c.Property.ToString(), c.Key, c.From, c.To,
+                    c.FromSource?.ToString(), c.ToSource?.ToString(), identity, cause, .. FlagPart(flagKey)]),
                 Kind = ChangeKind.Modified,
                 Change = c,
                 Objects = [.. g.Select(r => r.Pair).OrderBy(p => p.A).ThenBy(p => p.B)],
+                Flags = Split(flagKey),
                 RootCauseEventId = cause,
             });
         }
 
         var matchedA = pairs.Select(p => p.A.Id).ToHashSet();
         var matchedB = pairs.Select(p => p.B.Id).ToHashSet();
-        foreach (var g in ctx.A.Objects.Where(o => !matchedA.Contains(o.Id)).GroupBy(o => o.LayerId))
-            sets.Add(Leftovers(ChangeKind.Removed, g.Key, ctx.A.LayerLabel(g.Key), g.Select(o => new ObjectPair(o.Id, null)),
-                ctx.RemovedEvent.GetValueOrDefault((TableKind.Layer, g.Key))));
-        foreach (var g in ctx.B.Objects.Where(o => !matchedB.Contains(o.Id)).GroupBy(o => o.LayerId))
-            sets.Add(Leftovers(ChangeKind.Added, g.Key, ctx.B.LayerLabel(g.Key), g.Select(o => new ObjectPair(null, o.Id)), null));
+        foreach (var g in ctx.A.Objects.Where(o => !matchedA.Contains(o.Id)).GroupBy(o => (o.LayerId, Flags: Key(flags.ForRemoved(o)))))
+            sets.Add(Leftovers(ChangeKind.Removed, g.Key.LayerId, ctx.A.LayerLabel(g.Key.LayerId), g.Select(o => new ObjectPair(o.Id, null)),
+                ctx.RemovedEvent.GetValueOrDefault((TableKind.Layer, g.Key.LayerId)), g.Key.Flags));
+        foreach (var g in ctx.B.Objects.Where(o => !matchedB.Contains(o.Id)).GroupBy(o => (o.LayerId, Flags: Key(flags.ForAdded(o)))))
+            sets.Add(Leftovers(ChangeKind.Added, g.Key.LayerId, ctx.B.LayerLabel(g.Key.LayerId), g.Select(o => new ObjectPair(null, o.Id)), null, g.Key.Flags));
 
         return [.. sets
             .OrderBy(s => s.Kind)
@@ -287,14 +316,20 @@ internal static class ChangeSets
             .ThenBy(s => s.Id, StringComparer.Ordinal)];
     }
 
-    private static ChangeSet Leftovers(ChangeKind kind, Guid layerId, string layer, IEnumerable<ObjectPair> objects, string? cause) => new()
+    private static ChangeSet Leftovers(ChangeKind kind, Guid layerId, string layer, IEnumerable<ObjectPair> objects, string? cause, string flagKey) => new()
     {
-        Id = StableId.From("cs", kind.ToString(), layer, layerId.ToString(), cause),
+        Id = StableId.From("cs", [kind.ToString(), layer, layerId.ToString(), cause, .. FlagPart(flagKey)]),
         Kind = kind,
         Layer = layer,
         Objects = [.. objects.OrderBy(p => p.A).ThenBy(p => p.B)],
+        Flags = Split(flagKey),
         RootCauseEventId = cause,
     };
+
+    private static string Key(IEnumerable<string> flags) => string.Join(",", flags.Order(StringComparer.Ordinal));
+    private static string[] Split(string key) => key.Length == 0 ? [] : key.Split(',');
+    /// <summary>Unflagged sets keep the ids they had before detectors existed.</summary>
+    private static string?[] FlagPart(string key) => key.Length == 0 ? [] : [key];
 }
 
 /// <summary>Culture-invariant labels for change values.</summary>

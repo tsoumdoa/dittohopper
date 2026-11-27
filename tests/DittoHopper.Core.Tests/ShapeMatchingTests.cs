@@ -129,7 +129,7 @@ public class ShapeMatchingTests
     }
 
     [Fact]
-    public void Pass5_AnEditedObjectWithANewIdIsAFuzzyPairThatNeedsReview()
+    public void Pass5_AnEditedObjectWithANewIdIsAFuzzyPairThatNeedsALook()
     {
         var a = new SnapshotBuilder();
         var box = a.Solid(a.Layer("L"), new Vec3());
@@ -140,7 +140,9 @@ public class ShapeMatchingTests
         AssertPairs(r, (box, grown, MatchedBy.Fuzzy));
         // Kind 0.15 + overlap 0.35 × 0.751 + size 0.25 × 0.751 + layer 0.15 + no names 0.05.
         Assert.Equal(0.801, r.Matches[0].Confidence);
-        Assert.True(r.Matches[0].NeedsReview);
+        var set = Assert.Single(r.ChangeSets);
+        Assert.Equal([Detectors.FuzzyMatch], set.Flags);
+        Assert.True(set.NeedsLook);
     }
 
     [Fact]

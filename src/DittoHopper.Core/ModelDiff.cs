@@ -5,7 +5,8 @@ namespace DittoHopper.Core;
 /// <summary>
 /// Entry point of the diff engine: a pure function from two snapshots and settings to a <see cref="DiffResult"/>.
 /// Pipeline: match tables (id, path, name) → match objects (passes 1–5) → infer layers and match groups from
-/// where the objects went → table events → compare pairs through the table maps → group into change sets.
+/// where the objects went → table events → compare pairs through the table maps (geometry ladder) → group into
+/// change sets, with per-object detector flags → layer rows → set-level detector flags.
 /// </summary>
 public static class ModelDiff
 {
@@ -20,6 +21,13 @@ public static class ModelDiff
         TableDiff.MatchGroups(ctx, pairs);
         TableDiff.BuildEvents(ctx);
         var compared = Comparer.Run(ctx, pairs, geometry);
+        var events = ctx.Events
+            .OrderBy(e => e.Table).ThenBy(e => e.Label, StringComparer.Ordinal).ThenBy(e => e.Kind)
+            .ThenBy(e => e.Property).ThenBy(e => e.Id, StringComparer.Ordinal).ToList();
+        var flags = new Flagger(ctx, pairs, compared.Displacement);
+        var sets = ChangeSets.Build(ctx, compared.Rows, pairs, flags);
+        var layers = LayerRows.Build(ctx, sets, events);
+        sets = flags.ForSets(sets, layers);
 
         return new DiffResult
         {
@@ -30,13 +38,12 @@ public static class ModelDiff
             TableMatches = ctx.AllTableMaps
                 .SelectMany(map => map.Entries.Select(e => new TableMatch(map.Kind, e.A, e.B, e.By, e.Confidence)))
                 .OrderBy(m => m.Table).ThenBy(m => m.A).ToList(),
-            TableEvents = ctx.Events
-                .OrderBy(e => e.Table).ThenBy(e => e.Label, StringComparer.Ordinal).ThenBy(e => e.Kind)
-                .ThenBy(e => e.Property).ThenBy(e => e.Id, StringComparer.Ordinal).ToList(),
+            TableEvents = events,
             Matches = compared.Matches,
             Geometry = compared.Geometry,
-            ChangeSets = ChangeSets.Build(ctx, compared.Rows, pairs),
+            ChangeSets = sets,
             UnchangedObjects = compared.UnchangedObjects,
+            Layers = layers,
         };
     }
 }
@@ -75,6 +82,8 @@ internal sealed class DiffContext
         Settings = settings;
         if (settings.ShapeTolerance is double s && !(s > 0 && double.IsFinite(s)))
             throw new ArgumentOutOfRangeException(nameof(settings), "ShapeTolerance must be a positive number, or null.");
+        if (!(settings.NudgeFactor >= 1 && double.IsFinite(settings.NudgeFactor)))
+            throw new ArgumentOutOfRangeException(nameof(settings), "NudgeFactor must be at least 1.");
         if (!(settings.FuzzyThreshold > 0 && settings.FuzzyThreshold <= 1))
             throw new ArgumentOutOfRangeException(nameof(settings), "FuzzyThreshold must be above 0 and at most 1.");
         (Header, Scale) = MakeHeader(a.Info, b.Info, hasBlocks: a.Blocks.Count + b.Blocks.Count > 0);
@@ -167,6 +176,7 @@ internal sealed class Side
     public readonly Dictionary<Guid, int> OnLayer = [], InstancesUsing = [], MaterialUsers = [], LinetypeUsers = [];
     public readonly Dictionary<Guid, List<Guid>> GroupMembers = [];
     public readonly ILookup<Guid, ObjectRecord> ObjectsOnLayer;
+    public readonly Guid? CurrentLayerId;
     private readonly Dictionary<Guid, HashSet<Guid>> closures = [];
 
     public Side(ModelSnapshot s)
@@ -177,6 +187,7 @@ internal sealed class Side
         Linetypes = Sorted(s.Linetypes, x => x.Id, out LinetypeById, "linetype");
         Groups = Sorted(s.Groups, x => x.Id, out GroupById, "group");
         Objects = Sorted(s.Objects, x => x.Id, out ObjectById, "object");
+        CurrentLayerId = s.CurrentLayerId;
 
         foreach (var layer in Layers)
             LayerPath[layer.Id] = BuildPath(layer);

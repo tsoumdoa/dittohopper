@@ -23,6 +23,7 @@
   "settings": {
     "stableKey": "diff:uid",
     "layerInferShare": 0.6,
+    "nudgeFactor": 10,
     "fuzzyThreshold": 0.75,
     "toggles": {
       "placement": true,
@@ -75,7 +76,7 @@
   "geometry": [],
   "changeSets": [
     {
-      "id": "cs-9f74f70e167acb16",
+      "id": "cs-e8a0aa1c1d42781b",
       "kind": "added",
       "layer": "Columns",
       "objects": [
@@ -83,9 +84,23 @@
           "b": "00000000-0000-0000-0000-000000001000"
         }
       ],
-      "flags": [],
+      "flags": [
+        "duplicate"
+      ],
       "review": "unreviewed"
     }
   ],
-  "unchangedObjects": 3
+  "unchangedObjects": 3,
+  "layers": [
+    {
+      "a": "00000000-0000-0000-0000-000000000001",
+      "b": "00000000-0000-0000-0000-000000000001",
+      "path": "Columns",
+      "objects": 3,
+      "changeSets": [
+        "cs-e8a0aa1c1d42781b"
+      ],
+      "events": []
+    }
+  ]
 }

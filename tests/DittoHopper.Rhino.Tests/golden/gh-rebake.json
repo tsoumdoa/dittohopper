@@ -25,6 +25,7 @@
   "settings": {
     "stableKey": "diff:uid",
     "layerInferShare": 0.6,
+    "nudgeFactor": 10,
     "fuzzyThreshold": 0.75,
     "toggles": {
       "placement": true,
@@ -202,5 +203,23 @@
   ],
   "geometry": [],
   "changeSets": [],
-  "unchangedObjects": 19
+  "unchangedObjects": 19,
+  "layers": [
+    {
+      "a": "00000000-0000-0000-0000-000000000001",
+      "b": "00000000-0000-0000-0000-000000000001",
+      "path": "GH",
+      "objects": 19,
+      "changeSets": [],
+      "events": []
+    },
+    {
+      "a": "00000000-0000-0000-0000-000000000002",
+      "b": "00000000-0000-0000-0000-000000000002",
+      "path": "GH-other",
+      "objects": 0,
+      "changeSets": [],
+      "events": []
+    }
+  ]
 }

@@ -25,6 +25,7 @@
   "settings": {
     "stableKey": "diff:uid",
     "layerInferShare": 0.6,
+    "nudgeFactor": 10,
     "fuzzyThreshold": 0.75,
     "toggles": {
       "placement": true,
@@ -103,5 +104,26 @@
   ],
   "geometry": [],
   "changeSets": [],
-  "unchangedObjects": 3
+  "unchangedObjects": 3,
+  "layers": [
+    {
+      "a": "00000000-0000-0000-0000-000000000001",
+      "b": "00000000-0000-0000-0000-000000000001",
+      "path": "Furniture",
+      "objects": 3,
+      "changeSets": [],
+      "events": [
+        "ev-a190427ce9629d22"
+      ]
+    },
+    {
+      "b": "00000000-0000-0000-0000-000000000005",
+      "path": "Interior",
+      "objects": 0,
+      "changeSets": [],
+      "events": [
+        "ev-0de0990fe0241f94"
+      ]
+    }
+  ]
 }

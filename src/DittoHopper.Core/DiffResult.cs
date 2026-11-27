@@ -22,6 +22,8 @@ public sealed record DiffResult
     public IReadOnlyList<ChangeSet> ChangeSets { get; init; } = [];
     /// <summary>Matched pairs with no change at all.</summary>
     public int UnchangedObjects { get; init; }
+    /// <summary>The layer matrix rows: what touched each layer. <see cref="DiffSummary"/> turns them into a status.</summary>
+    public IReadOnlyList<LayerRow> Layers { get; init; } = [];
 
     /// <summary>A copy with the review state of one change set or table event set. Unknown ids throw.</summary>
     public DiffResult WithReview(string id, ReviewState state)
@@ -159,8 +161,31 @@ public sealed record ChangeSet
     /// <summary>For Added (B's layer) and Removed (A's layer) sets.</summary>
     public string? Layer { get; init; }
     public required IReadOnlyList<ObjectPair> Objects { get; init; }
-    /// <summary>Detector ids. Detectors arrive after M1, so this is empty for now.</summary>
+    /// <summary>
+    /// Detector ids (<see cref="Detectors"/>), sorted. Objects with different per-object flags never share a set;
+    /// <see cref="Detectors.LoneDeletion"/> and <see cref="Detectors.MassChange"/> are judged on the whole set.
+    /// </summary>
     public IReadOnlyList<string> Flags { get; init; } = [];
     public string? RootCauseEventId { get; init; }
     public ReviewState Review { get; init; }
+
+    /// <summary>Not yet marked intended, and flagged (being outside the declared scope is a flag).</summary>
+    [JsonIgnore]
+    public bool NeedsLook => Review != ReviewState.Intended && Flags.Count > 0;
+}
+
+/// <summary>
+/// One row of the layer matrix: an A layer and its B counterpart, or a B layer with no A counterpart (an added layer
+/// or a split target). Lists the change sets with an object on it, on either side, and the layer table events about it.
+/// </summary>
+public sealed record LayerRow
+{
+    public Guid? A { get; init; }
+    public Guid? B { get; init; }
+    /// <summary>A's full path, or B's for a B-only row.</summary>
+    public required string Path { get; init; }
+    /// <summary>Objects on the layer in A (in B for a B-only row).</summary>
+    public int Objects { get; init; }
+    public IReadOnlyList<string> ChangeSets { get; init; } = [];
+    public IReadOnlyList<string> Events { get; init; } = [];
 }

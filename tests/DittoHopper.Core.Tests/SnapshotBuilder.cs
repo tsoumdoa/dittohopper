@@ -15,6 +15,7 @@ internal sealed class SnapshotBuilder
     public readonly List<TableRecord> Linetypes = [];
     public readonly List<GroupRecord> Groups = [];
     public readonly List<ObjectRecord> Objects = [];
+    public Guid? CurrentLayer;
 
     public SnapshotBuilder(int firstId = 1) => next = firstId;
 
@@ -44,12 +45,13 @@ internal sealed class SnapshotBuilder
         Linetypes = [.. Linetypes],
         Groups = [.. Groups],
         Objects = [.. Objects],
+        CurrentLayerId = CurrentLayer,
     };
 
-    public Guid Layer(string name, Guid? parent = null, int color = unchecked((int)0xFF000000))
+    public Guid Layer(string name, Guid? parent = null, int color = unchecked((int)0xFF000000), bool locked = false, bool visible = true)
     {
         var id = NewId();
-        Layers.Add(new LayerRecord { Id = id, Name = name, ParentId = parent, Color = color });
+        Layers.Add(new LayerRecord { Id = id, Name = name, ParentId = parent, Color = color, Locked = locked, Visible = visible });
         return id;
     }
 

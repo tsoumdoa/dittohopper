@@ -25,6 +25,7 @@
   "settings": {
     "stableKey": "diff:uid",
     "layerInferShare": 0.6,
+    "nudgeFactor": 10,
     "fuzzyThreshold": 0.75,
     "toggles": {
       "placement": true,
@@ -157,5 +158,34 @@
   ],
   "geometry": [],
   "changeSets": [],
-  "unchangedObjects": 12
+  "unchangedObjects": 12,
+  "layers": [
+    {
+      "a": "00000000-0000-0000-0000-000000000001",
+      "path": "Slabs",
+      "objects": 12,
+      "changeSets": [],
+      "events": [
+        "ev-a87482668196142f"
+      ]
+    },
+    {
+      "b": "00000000-0000-0000-0000-00000000000e",
+      "path": "Slabs-L01",
+      "objects": 7,
+      "changeSets": [],
+      "events": [
+        "ev-a87482668196142f"
+      ]
+    },
+    {
+      "b": "00000000-0000-0000-0000-00000000000f",
+      "path": "Slabs-L02",
+      "objects": 5,
+      "changeSets": [],
+      "events": [
+        "ev-a87482668196142f"
+      ]
+    }
+  ]
 }
