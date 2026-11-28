@@ -1,8 +1,7 @@
+using DittoHopper.Core;
 using DittoHopper.Rhino;
 using Grasshopper.Kernel;
 using Rhino;
-using Rhino.DocObjects;
-using Rhino.DocObjects.Tables;
 using Rhino.FileIO;
 
 namespace DittoHopper.Grasshopper;
@@ -10,8 +9,9 @@ namespace DittoHopper.Grasshopper;
 /// <summary>
 /// Captures one model: a .3dm file, the active document as it is now, or the active document as last saved.
 /// File reads are cached per file version (path, size, last write time), so re-solving never re-reads an
-/// unchanged file. A live snapshot is re-captured shortly after its document changes; a last-saved one when the
-/// document is saved or another is opened.
+/// unchanged file. A live snapshot is cached per document version (<see cref="DocumentChanges"/>, the one list of the
+/// document events a snapshot depends on), so it is re-captured after any change it would see, and this component
+/// expires shortly after one; a last-saved one when the document is saved or another is opened.
 /// <para>
 /// Ownership: snapshots this component publishes are never disposed by it, because downstream data may still
 /// use them after the cache moves on. Dropping a cache entry just lets the GC finalize the geometry.
@@ -26,7 +26,6 @@ public sealed class SnapshotComponent : DittoComponent
     /// <summary>Serial numbers of the documents this solution captured live, and read the last save of.</summary>
     private uint? liveDoc, savedDoc;
     private bool watching, refreshScheduled;
-    private int liveGeneration;
 
     public SnapshotComponent()
         : base("Snapshot", "Snapshot",
@@ -122,7 +121,8 @@ public sealed class SnapshotComponent : DittoComponent
         {
             liveDoc = doc.RuntimeSerialNumber;
             Message = "Live";
-            return Cached($"doc:{doc.RuntimeSerialNumber}:{liveGeneration}", () => RhinoSnapshot.FromDocument(doc));
+            DocumentChanges.Start();
+            return Cached($"doc:{doc.RuntimeSerialNumber}:{DocumentChanges.Count(doc)}", () => RhinoSnapshot.FromDocument(doc));
         }
         savedDoc = doc.RuntimeSerialNumber;
         Message = "Last saved";
@@ -208,17 +208,8 @@ public sealed class SnapshotComponent : DittoComponent
         watching = on;
         if (on)
         {
-            RhinoDoc.AddRhinoObject += OnObject;
-            RhinoDoc.DeleteRhinoObject += OnObject;
-            RhinoDoc.UndeleteRhinoObject += OnObject;
-            RhinoDoc.ReplaceRhinoObject += OnReplace;
-            RhinoDoc.ModifyObjectAttributes += OnAttributes;
-            RhinoDoc.LayerTableEvent += OnLayers;
-            RhinoDoc.InstanceDefinitionTableEvent += OnBlocks;
-            RhinoDoc.MaterialTableEvent += OnMaterials;
-            RhinoDoc.GroupTableEvent += OnGroups;
-            RhinoDoc.LinetypeTableEvent += OnLinetypes;
-            RhinoDoc.DocumentPropertiesChanged += OnProperties;
+            DocumentChanges.Start();
+            DocumentChanges.Changed += Edited;
             RhinoDoc.EndSaveDocument += OnSaved;
             RhinoDoc.EndOpenDocument += OnSwitched;
             RhinoDoc.NewDocument += OnSwitched;
@@ -227,17 +218,7 @@ public sealed class SnapshotComponent : DittoComponent
         }
         else
         {
-            RhinoDoc.AddRhinoObject -= OnObject;
-            RhinoDoc.DeleteRhinoObject -= OnObject;
-            RhinoDoc.UndeleteRhinoObject -= OnObject;
-            RhinoDoc.ReplaceRhinoObject -= OnReplace;
-            RhinoDoc.ModifyObjectAttributes -= OnAttributes;
-            RhinoDoc.LayerTableEvent -= OnLayers;
-            RhinoDoc.InstanceDefinitionTableEvent -= OnBlocks;
-            RhinoDoc.MaterialTableEvent -= OnMaterials;
-            RhinoDoc.GroupTableEvent -= OnGroups;
-            RhinoDoc.LinetypeTableEvent -= OnLinetypes;
-            RhinoDoc.DocumentPropertiesChanged -= OnProperties;
+            DocumentChanges.Changed -= Edited;
             RhinoDoc.EndSaveDocument -= OnSaved;
             RhinoDoc.EndOpenDocument -= OnSwitched;
             RhinoDoc.NewDocument -= OnSwitched;
@@ -246,38 +227,27 @@ public sealed class SnapshotComponent : DittoComponent
         }
     }
 
-    // Edits refresh only a live snapshot of the document they happened in.
-    private void OnObject(object? sender, RhinoObjectEventArgs e) => Edited(e.TheObject?.Document);
-    private void OnReplace(object? sender, RhinoReplaceObjectEventArgs e) => Edited(e.Document);
-    private void OnAttributes(object? sender, RhinoModifyObjectAttributesEventArgs e) => Edited(e.Document);
-    private void OnLayers(object? sender, LayerTableEventArgs e) => Edited(e.Document);
-    private void OnBlocks(object? sender, InstanceDefinitionTableEventArgs e) => Edited(e.Document);
-    private void OnMaterials(object? sender, MaterialTableEventArgs e) => Edited(e.Document);
-    private void OnGroups(object? sender, GroupTableEventArgs e) => Edited(e.Document);
-    private void OnLinetypes(object? sender, LinetypeTableEventArgs e) => Edited(e.Document);
-    private void OnProperties(object? sender, DocumentEventArgs e) => Edited(e.Document);
-
-    private void Edited(RhinoDoc? doc)
+    /// <summary>A change a snapshot would see expires a live snapshot of that document; the cache key has moved on already.</summary>
+    private void Edited(RhinoDoc doc)
     {
-        if (doc is not null && doc.RuntimeSerialNumber == liveDoc) Refresh(live: true);
+        if (doc.RuntimeSerialNumber == liveDoc) Refresh();
     }
 
     /// <summary>Saving changes the file a last-saved snapshot reads (its cache key follows the file version).</summary>
     private void OnSaved(object? sender, DocumentSaveEventArgs e)
     {
-        if (e.Document is { } doc && doc.RuntimeSerialNumber == savedDoc) Refresh(live: false);
+        if (e.Document is { } doc && doc.RuntimeSerialNumber == savedDoc) Refresh();
     }
 
-    /// <summary>Another document may now be the active one: both kinds of document snapshot re-capture.</summary>
-    private void OnSwitched(object? sender, EventArgs e) => Refresh(live: true);
+    /// <summary>Another document may now be the active one: both kinds of document snapshot look again.</summary>
+    private void OnSwitched(object? sender, EventArgs e) => Refresh();
 
     /// <summary>
-    /// Expires this component once edits pause, on the UI thread, rather than on every event. A live refresh also
-    /// moves the live cache key on, so the next solution re-captures the document.
+    /// Expires this component once edits pause, on the UI thread, rather than on every event. The cache keys decide
+    /// what is captured again: a live one by the document's change count, a file one by the file's version.
     /// </summary>
-    private void Refresh(bool live) => RhinoApp.InvokeOnUiThread(new Action(() =>
+    private void Refresh() => RhinoApp.InvokeOnUiThread(new Action(() =>
     {
-        if (live) liveGeneration++;
         if (refreshScheduled || Locked || OnPingDocument() is not { } doc) return;
         refreshScheduled = true;
         doc.ScheduleSolution(400, _ =>
@@ -308,7 +278,7 @@ public sealed class SnapshotComponent : DittoComponent
             case GH_DocumentContext.Loaded when liveDoc is not null || savedDoc is not null:
                 // Edits made while this definition was in the background weren't seen.
                 Watch(true);
-                Refresh(live: true);
+                Refresh();
                 break;
         }
         base.DocumentContextChanged(document, context);

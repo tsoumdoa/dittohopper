@@ -21,3 +21,24 @@
   Stamp IDs, on a DittoHopper tab with icons drawn in code. Yak packaging (`tools/Pack-Yak.ps1`)
   and headless Grasshopper tests. Diff Settings' Scope, the Level 1 summary sentence, detector flags and
   fuzzy pairings to review come from the M3 core.
+- Rhino plug-in (v1a), version 0.2.0-beta.1: `DittoHopper.rhp` in the same Yak package as the `.gha`. The
+  `DittoReview` command compares the open document with its last save, or A and/or B from a file, and opens a
+  dockable review panel: A → B, Scope (re-diffs), Gate (Assert Unchanged's check), the summary and Refresh; the
+  Changes tab (Needs a look, Table events, In scope or Changes) and the Unchanged tab (identical objects per
+  layer, and those that look different only through a table entry); the object card (Changed with from → to and
+  why, Unchanged); Zoom to, Select in Rhino (when B is the document), J/K/F, hover outlines. A display conduit
+  draws the status colours and A's ghost (the live document's objects when B is the document; snapshots in the
+  document's units for two files), dims all but the selected row, and draws the HUD: card, tags, nudge rings,
+  strip, or off. Open Review (GH) hands a result to the panel through `ReviewHub`, a static in the shared
+  `DittoHopper.Rhino.dll`.
+- One presentation model for every shell: `Review` in Core (groups, rows, chips, card, unchanged summary, gate);
+  `Describe`, `LayerPatterns`, `Vocabulary` and the gate moved from the `.gha` to Core, `DiffRun` and Diff
+  Preview's drawing to `DittoHopper.Rhino`.
+- v1a review fixes: a review of the open document goes stale when the document changes (banner, gate withdrawn,
+  the reviewed snapshot drawn) until Refresh; a review draws only in its host document and is retired when it
+  closes; table events reach their members (a group rename selects its members) without painting them; command
+  snapshots are disposed with their review; Grasshopper output is unchanged from v0. `DocumentChanges` counts every
+  document change a snapshot can see (objects, lights, attributes, every table it reads, units and tolerances); a
+  live snapshot records the count, so a held Grasshopper result of a changed document opens stale, and one whose
+  document closed is refused. Grasshopper's Snapshot caches a live snapshot per document change count and expires on
+  the same tracker, so a light, hatch pattern or dimension style edit is re-captured too.

@@ -4,10 +4,11 @@ authors:
   - aectooling by tomoS
 license: MIT
 description: >
-  Compare two Rhino models in Grasshopper and see what changed, and just as
-  clearly what did not. Each change is reported once, at its root cause; every
-  matched pair says how it was matched. Includes a QA gate for layers that must
-  not change.
+  Compare two Rhino models and see what changed, and just as clearly what did
+  not. The DittoReview command opens a review panel and draws the changes in
+  the viewport; Grasshopper components automate diffs and QA gates. Each change
+  is reported once, at its root cause; every matched pair says how it was
+  matched.
 url: https://github.com/tsoumdoa/dittohopper
 icon: icon.png
 keywords:
@@ -17,4 +18,6 @@ keywords:
   - model
   - revision
   - qa
+  - review
   - guid:e59805d1-fcad-4d4f-b916-57b439bf9d91
+  - guid:a066bd22-92f8-42bf-95ad-9a98373f7e3a

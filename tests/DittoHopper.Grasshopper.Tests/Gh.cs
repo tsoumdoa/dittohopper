@@ -7,7 +7,7 @@ using Xunit;
 namespace DittoHopper.Grasshopper.Tests;
 
 /// <summary>
-/// The .gha under test sits beside the tests but is not in deps.json (see the csproj), so resolve it here. Kept
+/// The .gha and the .rhp under test sit beside the tests but are not in deps.json (see the csproj), so resolve them here. Kept
 /// free of Grasshopper types, so plain tests run without Rhino.
 /// </summary>
 internal static class GhaResolver
@@ -15,8 +15,12 @@ internal static class GhaResolver
     [ModuleInitializer]
     internal static void Register() => AssemblyLoadContext.Default.Resolving += (context, name) =>
     {
-        var gha = Path.Combine(AppContext.BaseDirectory, name.Name + ".gha");
-        return File.Exists(gha) ? context.LoadFromAssemblyPath(gha) : null;
+        foreach (var extension in new[] { ".gha", ".rhp" })
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, name.Name + extension);
+            if (File.Exists(path)) return context.LoadFromAssemblyPath(path);
+        }
+        return null;
     };
 }
 

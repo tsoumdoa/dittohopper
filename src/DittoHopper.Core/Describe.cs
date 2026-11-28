@@ -1,7 +1,6 @@
 using System.Globalization;
-using DittoHopper.Core;
 
-namespace DittoHopper.Grasshopper;
+namespace DittoHopper.Core;
 
 /// <summary>Plain-English labels for results, change sets, table events and match evidence.</summary>
 public static class Describe
@@ -33,13 +32,7 @@ public static class Describe
     /// </summary>
     public static string Report(DiffResult r, Func<ChangeSet, IEnumerable<string>>? layersOf = null)
     {
-        double shapeTolerance = r.Settings.ShapeTolerance ?? r.Header.Tolerance;
-        var lines = new List<string>
-        {
-            Summary(r),
-            $"A {Label(r.A.Source)} → B {Label(r.B.Source)} · {Unit(r.Header.Units)}, shape tolerance {Number(shapeTolerance)}" +
-                (r.Settings.ShapeTolerance is null ? " (auto)" : ""),
-        };
+        var lines = new List<string> { Summary(r), Sides(r) };
         if (r.Matches.Count > 0)
         {
             var by = r.Matches.GroupBy(m => m.By).OrderBy(g => g.Key).Select(g => $"{Count(g.Count())} by {Badge(g.Key)}");
@@ -71,6 +64,14 @@ public static class Describe
         if (sets.Count > ReportedSets)
             lines.Add($"• …and {Plural(sets.Count - ReportedSets, "more change set")}: use Diff Filter to list them.");
         return string.Join(Environment.NewLine, lines);
+    }
+
+    /// <summary>Where A and B came from, the units and the effective shape tolerance: "A v12.3dm → B v13.3dm · mm, shape tolerance 0.01 (auto)".</summary>
+    public static string Sides(DiffResult r)
+    {
+        double shapeTolerance = r.Settings.ShapeTolerance ?? r.Header.Tolerance;
+        return $"A {Label(r.A.Source)} → B {Label(r.B.Source)} · {Unit(r.Header.Units)}, shape tolerance {Number(shapeTolerance)}" +
+            (r.Settings.ShapeTolerance is null ? " (auto)" : "");
     }
 
     /// <summary>The evidence badge for a match: GUID, key, hash, shape 0.93, "fuzzy 0.81 · needs review".</summary>
@@ -124,7 +125,8 @@ public static class Describe
         _ => Event(e),
     };
 
-    private static string Affected(TableEvent e) => e.Table switch
+    /// <summary>What a table event's affected objects are: instances, members, ByLayer objects or objects.</summary>
+    public static string Affected(TableEvent e) => e.Table switch
     {
         TableKind.Block => "instance",
         TableKind.Group => "member",
@@ -148,13 +150,13 @@ public static class Describe
         _ => $"{Name(c.Property)} {Value(c.From, c.FromSource)} → {Value(c.To, c.ToSource)}",
     };
 
-    /// <summary>A change set in one line: count, change, layers and flags. <paramref name="count"/> may be the in-scope part.</summary>
-    public static string Set(ChangeSet s, int count, IEnumerable<string> layers)
+    /// <summary>
+    /// A change set in one line: count, change, layers and, unless <paramref name="flags"/> is false, its flags.
+    /// <paramref name="count"/> may be the in-scope part.
+    /// </summary>
+    public static string Set(ChangeSet s, int count, IEnumerable<string> layers, bool flags = true)
     {
-        var distinct = layers.Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToList();
-        string where = distinct.Count == 0 ? "" : distinct.Count <= 3
-            ? " on " + string.Join(", ", distinct)
-            : $" on {string.Join(", ", distinct.Take(3))} and {Plural(distinct.Count - 3, "more layer")}";
+        string where = Layers(layers) is { Length: > 0 } list ? " on " + list : "";
         string text = s.Kind switch
         {
             ChangeKind.Added => $"{Plural(count, "object")} added on {s.Layer}",
@@ -162,8 +164,17 @@ public static class Describe
             _ => $"{Plural(count, "object")}{where}: {(s.Change is { } c ? Change(c) : "changed")}",
         };
         // A pairing's only flag is fuzzy-match, which its text already says.
-        if (s.Flags.Count > 0 && !IsPairing(s)) text += " · flagged: " + Flags(s.Flags);
+        if (flags && s.Flags.Count > 0 && !IsPairing(s)) text += " · flagged: " + Flags(s.Flags);
         return text;
+    }
+
+    /// <summary>Distinct layers, sorted: "Walls, Doors", or "A, B, C and 2 more layers" past three. Empty for none.</summary>
+    public static string Layers(IEnumerable<string> layers)
+    {
+        var distinct = layers.Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToList();
+        return distinct.Count <= 3
+            ? string.Join(", ", distinct)
+            : $"{string.Join(", ", distinct.Take(3))} and {Plural(distinct.Count - 3, "more layer")}";
     }
 
     /// <summary>An object's name, else its kind and short id.</summary>
@@ -189,7 +200,8 @@ public static class Describe
         _ => level.ToString().ToLowerInvariant(),
     };
 
-    private static string Value(string? value, ValueSource? source) =>
+    /// <summary>A property value: its label, else where it comes from (ByLayer…), else "none".</summary>
+    public static string Value(string? value, ValueSource? source) =>
         value ?? (source is ValueSource s && s != ValueSource.ByObject ? s.ToString() : "none");
 
     private static string Label(string source) => string.IsNullOrEmpty(source) ? "(unnamed)" : source;

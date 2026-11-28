@@ -75,9 +75,24 @@ public sealed class RhinoHost : IDisposable
     private static readonly string[] Arguments = ["/nosplash", "/notemplate", "/safemode"];
 #endif
 
+    /// <summary>
+    /// Set to a folder to write screenshots (the Grasshopper tests' ScreenshotTests). Rhino then boots with a hidden
+    /// window instead of none, since view capture needs real views.
+    /// </summary>
+    public static string? ScreenshotFolder => Environment.GetEnvironmentVariable("DITTOHOPPER_SCREENSHOTS") is { Length: > 0 } s ? s : null;
+
+    private static readonly List<Action> AfterShutdown = [];
+
+    /// <summary>Runs <paramref name="cleanup"/> once RhinoCore has shut down, when Rhino has written its settings.</summary>
+    public static void OnShutdown(Action cleanup)
+    {
+        lock (AfterShutdown) AfterShutdown.Add(cleanup);
+    }
+
     private void HostLoop(ManualResetEventSlim ready)
     {
-        using var core = new global::Rhino.Runtime.InProcess.RhinoCore(Arguments, global::Rhino.Runtime.InProcess.WindowStyle.NoWindow);
+        var window = ScreenshotFolder is null ? global::Rhino.Runtime.InProcess.WindowStyle.NoWindow : global::Rhino.Runtime.InProcess.WindowStyle.Hidden;
+        using var core = new global::Rhino.Runtime.InProcess.RhinoCore(Arguments, window);
         ready.Set();
         foreach (var action in _queue.GetConsumingEnumerable()) action();
     }
@@ -102,6 +117,7 @@ public sealed class RhinoHost : IDisposable
         _queue.CompleteAdding();
         _thread?.Join();
         _queue.Dispose();
+        lock (AfterShutdown) foreach (var cleanup in AfterShutdown) cleanup();
         FixturePair.DeleteRunDirectory();
     }
 

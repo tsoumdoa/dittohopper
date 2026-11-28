@@ -53,6 +53,21 @@ public static class Detectors
         FuzzyMatch => "Fuzzy match: the pairing needs review",
         _ => id,
     };
+
+    /// <summary>A detector id as a short chip label: "Tiny nudge", "Outside scope". Unknown ids come back as given.</summary>
+    public static string Label(string id) => id switch
+    {
+        OutsideScope => "Outside scope",
+        DefaultLayer => "Default layer",
+        TinyNudge => "Tiny nudge",
+        ByLayerOverride => "ByLayer overridden",
+        Duplicate => "Duplicate",
+        LockedOrHiddenLayer => "Locked or hidden layer",
+        LoneDeletion => "Lone deletion",
+        MassChange => "Mass change",
+        FuzzyMatch => "Fuzzy match",
+        _ => id,
+    };
 }
 
 /// <summary>Layer path globs, as in <see cref="DiffSettings.ScopeGlob"/>.</summary>

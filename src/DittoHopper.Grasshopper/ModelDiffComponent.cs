@@ -87,7 +87,7 @@ public sealed class ModelDiffComponent : DittoComponent
 
         foreach (string note in run.Result.Header.Notes)
             AddRuntimeMessage(GH_RuntimeMessageLevel.Remark, note);
-        var units = Geometry.OutputUnits(run, OnPingDocument()?.RhinoDocument ?? global::Rhino.RhinoDoc.ActiveDoc);
+        var units = run.OutputUnits(OnPingDocument()?.RhinoDocument ?? global::Rhino.RhinoDoc.ActiveDoc);
         if (units.Remark is { } remark) AddRuntimeMessage(GH_RuntimeMessageLevel.Remark, remark);
         da.SetDataList(0, run.Added.Select(id => Geometry.ToGoo(b.GeometryOf(id), units.B)));
         da.SetDataList(1, run.Removed.Select(id => Geometry.ToGoo(a.GeometryOf(id), units.A)));

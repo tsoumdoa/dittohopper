@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The Rhino plug-in (DittoHopper.rhp): the DittoReview command, the review panel and the viewport HUD.
+       RhinoCommon, Eto and Rhino.UI come from Rhino at run time. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>DittoHopper</AssemblyName>
+    <TargetExt>.rhp</TargetExt>
+    <!-- Copy NuGet dependencies Rhino doesn't ship (System.IO.Hashing) next to the .rhp, as for the .gha. -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../DittoHopper.Core/DittoHopper.Core.csproj" />
+    <ProjectReference Include="../DittoHopper.Rhino/DittoHopper.Rhino.csproj" />
+    <PackageReference Include="RhinoCommon" Version="$(RhinoApiVersion)" ExcludeAssets="runtime" />
+    <Reference Update="RhinoCommon;Eto;Rhino.UI;Ed.Eto"><Private>false</Private></Reference>
+    <!-- The plug-in mark is drawn by the same code as the Grasshopper icons, so it follows Icons.Logo. -->
+    <Compile Include="../DittoHopper.Grasshopper/Icons.cs" Link="Icons.cs" />
+    <!-- Eto has its own Color, Font and Graphics: no global System.Drawing or WinForms usings. -->
+    <Using Remove="System.Drawing" />
+    <Using Remove="System.Windows.Forms" />
+  </ItemGroup>
+</Project>

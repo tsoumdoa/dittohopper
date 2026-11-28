@@ -5,7 +5,7 @@ using System.Drawing.Drawing2D;
 namespace DittoHopper.Grasshopper;
 
 /// <summary>Component artwork, one glyph per component.</summary>
-public enum ComponentIcon { Snapshot, DiffSettings, ModelDiff, DiffFilter, DiffPreview, AssertUnchanged, StampIds }
+public enum ComponentIcon { Snapshot, DiffSettings, ModelDiff, DiffFilter, DiffPreview, AssertUnchanged, StampIds, OpenReview }
 
 /// <summary>
 /// Draws every icon in code on a 24-unit grid (the logo on a 64-unit grid), so they stay crisp at any size and no
@@ -100,6 +100,14 @@ public static class Icons
                 }
                 Fill(g, Ink, 5, 12, 14, 4.5f, 1.2f);
                 Line(g, Modified, W * 1.2f, 5, 19.5f, 19, 19.5f);
+                break;
+            case ComponentIcon.OpenReview: // A docked panel listing changes, one of them amber.
+                Outline(g, Ink, W, 3.5f, 4, 17, 16, 2);
+                Line(g, Ink, W, 14, 4.5f, 14, 19.5f);
+                Line(g, Unchanged, W * 0.8f, 6.5f, 8, 11.5f, 8);
+                Line(g, Modified, W * 1.2f, 6.5f, 12, 11.5f, 12);
+                Line(g, Unchanged, W * 0.8f, 6.5f, 16, 11.5f, 16);
+                Dot(g, Modified, 17.25f, 9, 1.6f);
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(icon), icon, null);

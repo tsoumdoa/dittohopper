@@ -1,4 +1,5 @@
 using DittoHopper.Core;
+using DittoHopper.Rhino;
 using Grasshopper.Kernel;
 
 namespace DittoHopper.Grasshopper;
@@ -75,7 +76,7 @@ public sealed class DiffFilterComponent : DittoComponent
 
         // Only invalid kinds given: nothing matches, rather than everything.
         var rows = kinds.Count == 0 && unknown.Count > 0 ? [] : Select(run, kinds, layers);
-        var units = Geometry.OutputUnits(run, OnPingDocument()?.RhinoDocument ?? global::Rhino.RhinoDoc.ActiveDoc);
+        var units = run.OutputUnits(OnPingDocument()?.RhinoDocument ?? global::Rhino.RhinoDoc.ActiveDoc);
         if (units.Remark is { } remark) AddRuntimeMessage(GH_RuntimeMessageLevel.Remark, remark);
         da.SetDataList(0, rows.Select(r => r.Pair.B is Guid b
             ? Geometry.ToGoo(run.B.GeometryOf(b), units.B)
