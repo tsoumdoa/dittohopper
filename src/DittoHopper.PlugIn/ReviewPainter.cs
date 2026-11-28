@@ -76,7 +76,8 @@ public sealed class ReviewPainter : IDisposable
         TextClipped(g, row.Name, name, Ink, left, y, nameWidth);
         Pill(g, row.Badge, mono, Dim, Back3, left + nameWidth + 6, y + 1);
         y += name.LineHeight + 1;
-        y = Wrapped(g, row.Description, body, Dim, left, y, inner);
+        // At most two lines: the card has the rest.
+        y = Wrapped(g, row.Description, body, Dim, left, y, inner, maxLines: 2);
         if (row.Flags.Count > 0)
         {
             y += 3;
@@ -96,38 +97,49 @@ public sealed class ReviewPainter : IDisposable
         float titleWidth = Math.Min(title.MeasureString(card.Title).Width, inner - pill - 70);
         TextClipped(g, card.Title, title, Ink, x + pill + 7, y - 1, titleWidth);
         Pill(g, card.Badge, mono, Dim, Back3, x + pill + 7 + titleWidth + 7, y + 1);
-        y += title.LineHeight + 2;
-        y = Wrapped(g, card.Meta, small, Faint, x, y, inner) + 4;
+        y += title.LineHeight + 4;
+        y = Wrapped(g, card.Meta, small, Faint, x, y, inner) + 10;
 
         Text(g, $"CHANGED · {card.Changed.Count}", caps, Faint, x, y);
-        y += caps.LineHeight + 3;
+        y += caps.LineHeight + 4;
+        float key = Math.Min(110, inner * 0.35f), vx = x + key, vw = inner - key;
         foreach (var c in card.Changed)
         {
-            float key = Math.Min(110, inner * 0.35f);
-            float top = y;
             float after = Wrapped(g, c.Property, small, Dim, x, y, key - 6);
-            float vx = x + key;
-            string from = c.From ?? "—", to = c.To ?? "—";
-            float fy = Wrapped(g, from, mono, From, vx, y, inner - key);
-            // From, then → To on the same line when it fits.
-            float fromWidth = mono.MeasureString(from).Width;
-            if (fy - top <= mono.LineHeight + 2 && vx + fromWidth + 16 + mono.MeasureString(to).Width <= x + inner)
-            {
-                Text(g, "→", small, Dim, vx + fromWidth + 4, y);
-                Text(g, to, mono, To, vx + fromWidth + 16, y);
-            }
-            else fy = Wrapped(g, "→ " + to, mono, To, vx, fy, inner - key);
-            y = Math.Max(after, fy) + 2;
+            y = Math.Max(after, Value(g, c, vx, y, vw)) + 3;
         }
         foreach (var why in card.Why) y = Wrapped(g, why, small, FlagInk, x, y + 2, inner);
         if (card.Unchanged.Count > 0)
         {
-            y += 8;
+            y += 10;
             Text(g, $"UNCHANGED · {card.Unchanged.Count}", caps, Faint, x, y);
-            y += caps.LineHeight + 3;
+            y += caps.LineHeight + 4;
             y = Flow(g, card.Unchanged.Select(u => "✓ " + u).ToList(), small, Dim, Rgb(35, 40, 48), x, y, inner, Tick);
         }
         return y + 10;
+    }
+
+    /// <summary>
+    /// One card line's value column, every wrapped line starting at <paramref name="x"/>: a described change as one
+    /// value; else from → to, on one line when it fits, otherwise from, then → to below with its own lines after the arrow.
+    /// Returns the y below it.
+    /// </summary>
+    private float Value(Graphics? g, CardChange c, float x, float y, float width)
+    {
+        if (c.Text is { } text) return Wrapped(g, text, body, Ink, x, y, width);
+        string from = c.From ?? "none", to = c.To ?? "none";
+        float arrow = small.MeasureString("→ ").Width;
+        float fromWidth = mono.MeasureString(from).Width, toWidth = mono.MeasureString(to).Width;
+        if (fromWidth + 4 + arrow + toWidth <= width)
+        {
+            Text(g, from, mono, c.From is null ? Faint : From, x, y);
+            Text(g, "→", small, Dim, x + fromWidth + 4, y);
+            Text(g, to, mono, c.To is null ? Faint : To, x + fromWidth + 4 + arrow, y);
+            return y + mono.LineHeight;
+        }
+        y = Wrapped(g, from, mono, c.From is null ? Faint : From, x, y, width);
+        Text(g, "→", small, Dim, x, y);
+        return Wrapped(g, to, mono, c.To is null ? Faint : To, x + arrow, y, width - arrow);
     }
 
     /// <summary>The Unchanged tab: what was checked and found identical, per A layer.</summary>
@@ -165,10 +177,21 @@ public sealed class ReviewPainter : IDisposable
         g.DrawText(f, c, x, y, s);
     }
 
-    /// <summary>Word-wrapped text; returns the y below it.</summary>
-    private static float Wrapped(Graphics? g, string s, Font f, Color c, float x, float y, float width)
+    /// <summary>Word-wrapped text, cut with an ellipsis after <paramref name="maxLines"/>; returns the y below it.</summary>
+    private static float Wrapped(Graphics? g, string s, Font f, Color c, float x, float y, float width, int maxLines = int.MaxValue)
     {
-        foreach (var line in Hud.Wrap(s, Math.Max(width, 20), 0, (t, _) => ToSize(f.MeasureString(t))))
+        width = Math.Max(width, 20);
+        Hud.Measure measure = (t, _) => ToSize(f.MeasureString(t));
+        var lines = Hud.Wrap(s, width, 0, measure);
+        if (lines.Count > maxLines)
+        {
+            lines = lines.Take(maxLines).ToList();
+            // The text goes on past the last line shown: end that line with an ellipsis, trimmed until it fits.
+            string last = lines[^1];
+            while (last.Length > 0 && measure(last + "…", 0).Width > width) last = last[..^1];
+            lines[^1] = last.TrimEnd() + "…";
+        }
+        foreach (var line in lines)
         {
             g?.DrawText(f, c, x, y, line);
             y += f.LineHeight;

@@ -133,7 +133,12 @@ public class ReviewModelTests
 
         // A block instance has a block and a placement, not a shape.
         var nudge = review.Card(review.Rows.Single(r => r.Name == "C-08"));
-        Assert.Equal("placement", Assert.Single(nudge.Changed).Property);
+        var moved = Assert.Single(nudge.Changed);
+        // A move has no two values to put side by side: it is described, not from → to.
+        Assert.Equal("placement", moved.Property);
+        Assert.Null(moved.From);
+        Assert.Null(moved.To);
+        Assert.StartsWith("moved 0.05 mm in X", moved.Text);
         Assert.Contains("block", nudge.Unchanged);
         Assert.DoesNotContain("shape", nudge.Unchanged);
         Assert.DoesNotContain("placement", nudge.Unchanged);

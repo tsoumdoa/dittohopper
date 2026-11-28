@@ -340,6 +340,12 @@ public sealed class PlugInTests(RhinoHost host, ITestOutputHelper output)
         var withSelection = Hud.Layout(review, selected, HudMode.CardAndTags, size, Measure, anchors).OfType<HudText>().Select(t => t.Text).ToList();
         Assert.Contains(selected.Tag, withSelection);
         Assert.Contains("Showing: " + selected.Name, withSelection);
+        // A tag longer than the view allows is cut to one line, and one at the right edge flips or clamps inside it.
+        var narrowView = new Size(200, 800);
+        var edge = Hud.Layout(review, null, HudMode.CardAndTags, narrowView, Measure, [new Hud.Anchor(nudge, new PointF(190, 400))]);
+        var tag = Assert.Single(edge.OfType<HudText>(), t => t.Text.StartsWith(nudge.Name, StringComparison.Ordinal));
+        Assert.EndsWith("…", tag.Text);
+        Assert.InRange(tag.At.X, 0, narrowView.Width - Measure(tag.Text, tag.Height).Width);
         Assert.DoesNotContain(Hud.Layout(review, null, HudMode.Card, size, Measure, anchors).OfType<HudText>(), t => t.Text == nudge.Tag);
         var strip = Hud.Layout(review, null, HudMode.Strip, size, Measure, anchors);
         Assert.All(strip.OfType<HudText>(), t => Assert.True(t.At.Y > 700, "the strip sits at the bottom"));

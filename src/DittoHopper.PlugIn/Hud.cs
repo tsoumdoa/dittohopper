@@ -81,7 +81,7 @@ public static class Hud
                 if (a.Row.Ring && a.At is PointF p)
                     shapes.Add(new HudBox(new RectangleF(p.X - 18, p.Y - 18, 36, 36), 18, Color.Transparent, DiffScene.Modified, 2));
             var tagged = Tagged(review, selected).ToHashSet();
-            Tags(shapes, [.. anchors.Where(a => tagged.Contains(a.Row))], selected, measure);
+            Tags(shapes, [.. anchors.Where(a => tagged.Contains(a.Row))], selected, view, measure);
         }
         if (mode is HudMode.CardAndTags or HudMode.Card) Card(shapes, review, selected, measure, stale);
         else Strip(shapes, review, view, measure, stale);
@@ -167,23 +167,33 @@ public static class Hud
         shapes.AddRange(body.Select(s => Shift(s, left)));
     }
 
-    private static void Tags(List<HudShape> shapes, IReadOnlyList<Anchor> anchors, ReviewRow? selected, Measure measure)
+    /// <summary>
+    /// One-line tags with a leader from each anchor. A tag is cut with an ellipsis to a sensible length (the panel and the
+    /// card have the whole text), goes up-right or up-left alternately so neighbours overlap less, flips side when it
+    /// would leave the view, and is kept inside it.
+    /// </summary>
+    private static void Tags(List<HudShape> shapes, IReadOnlyList<Anchor> anchors, ReviewRow? selected, Size view, Measure measure)
     {
+        float longest = Math.Clamp(view.Width - 40, 60, 320);
         int i = 0;
         foreach (var a in anchors)
         {
             if (a.At is not PointF p) continue;
             bool look = a.Row.Group == ReviewGroupKind.NeedsLook, sel = ReferenceEquals(a.Row, selected);
-            var size = measure(a.Row.Tag, Small);
-            // Alternate up-right and up-left so neighbouring tags overlap less.
-            bool right = i++ % 2 == 0;
-            var at = new PointF(p.X + (right ? 28 : -28), p.Y - 34);
+            string text = Ellipsize(a.Row.Tag, longest, Small, measure);
+            var size = measure(text, Small);
             float w = size.Width + 16, h = size.Height + 8;
-            var rect = new RectangleF(right ? at.X : at.X - w, at.Y - h / 2, w, h);
-            shapes.Add(new HudLine(p, at, Color.FromArgb(20, 22, 26), 1.5f));
+            bool right = i++ % 2 == 0;
+            if (right && p.X + 28 + w > view.Width - 4) right = false;
+            else if (!right && p.X - 28 - w < 4) right = true;
+            float x = Math.Clamp(right ? p.X + 28 : p.X - 28 - w, 4, Math.Max(4, view.Width - w - 4));
+            float y = Math.Clamp(p.Y - 34 - h / 2, 4, Math.Max(4, view.Height - h - 4));
+            var rect = new RectangleF(x, y, w, h);
+            var end = new PointF(right ? rect.Left : rect.Right, rect.Top + h / 2);
+            shapes.Add(new HudLine(p, end, Color.FromArgb(20, 22, 26), 1.5f));
             shapes.Add(new HudBox(new RectangleF(p.X - 3, p.Y - 3, 6, 6), 3, Color.FromArgb(20, 22, 26), Color.Transparent));
             shapes.Add(new HudBox(rect, h / 2, sel ? Selected : Panel, look && !sel ? Look : Color.Transparent, look && !sel ? 1.5f : 0));
-            shapes.Add(new HudText(a.Row.Tag, new PointF(rect.X + 8, rect.Y + 4), Color.White, Small));
+            shapes.Add(new HudText(text, new PointF(rect.X + 8, rect.Y + 4), Color.White, Small));
         }
     }
 

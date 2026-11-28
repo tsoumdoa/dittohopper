@@ -24,8 +24,8 @@ public sealed class ScreenshotFactAttribute : FactAttribute
 
 /// <summary>
 /// Evidence, not a gate: the mock's revision reviewed in a hidden-window Rhino, the viewport captured with the review
-/// conduit drawing, and what the panel shows written out as text (WPF, and so the Eto panel, doesn't render in this
-/// in-process host). One view capture per run: a second one crashed Rhino natively.
+/// conduit drawing, the panel's painted parts as images, and what the whole panel shows written out as text. One view
+/// capture per run: a second one crashed Rhino natively.
 /// DITTOHOPPER_SCREENSHOT_SELECT names a row to select; DITTOHOPPER_SCREENSHOT_HUD picks the HUD mode;
 /// DITTOHOPPER_SCREENSHOT_STALE=1 moves a column after the review, and checks that Rhino's own document events (which
 /// headless documents don't raise) made the review stale.
@@ -66,6 +66,7 @@ public sealed class ScreenshotTests(RhinoHost host, ITestOutputHelper output)
         output.WriteLine(session.Review.Sentence);
 
         File.WriteAllText(Path.Combine(folder, name + "-panel.txt"), PanelText(session));
+        SavePanelParts(folder, name, session);
 
         var view = doc.Views.Find("Perspective", false) ?? doc.Views.ActiveView ?? throw new InvalidOperationException("No view.");
         doc.Views.ActiveView = view;
@@ -101,6 +102,33 @@ public sealed class ScreenshotTests(RhinoHost host, ITestOutputHelper output)
         PlugInLoader.Forget();
     });
 
+    /// <summary>
+    /// The panel's painted parts (the Changes list, the object card and the Unchanged tab), painted into bitmaps as the
+    /// panel paints them. Drawing into an Eto bitmap works on the windowed Rhino's thread; capturing the whole control
+    /// (with its text boxes and tabs) comes out blank.
+    /// </summary>
+    private static void SavePanelParts(string folder, string name, ReviewSession session)
+    {
+        const int width = 390;
+        var review = session.Review!;
+        using var painter = new ReviewPainter();
+        var hits = new List<ReviewPainter.Hit>();
+        void Save(string part, Eto.Drawing.Color back, Func<Eto.Drawing.Graphics?, float> paint)
+        {
+            int height = Math.Max(1, (int)Math.Ceiling(paint(null)));
+            using var bitmap = new Eto.Drawing.Bitmap(width, height, Eto.Drawing.PixelFormat.Format32bppRgba);
+            using (var g = new Eto.Drawing.Graphics(bitmap))
+            {
+                g.FillRectangle(back, 0, 0, width, height);
+                paint(g);
+            }
+            bitmap.Save(Path.Combine(folder, $"{name}-panel-{part}.png"), Eto.Drawing.ImageFormat.Png);
+        }
+        Save("rows", ReviewPainter.Back, g => painter.Rows(g, review, width, session.Selected, session.Hover, hits));
+        Save("card", ReviewPainter.CardBack, g => painter.Card(g, review, session.SelectedRow, width));
+        Save("unchanged", ReviewPainter.Back, g => painter.Unchanged(g, review, width));
+    }
+
     /// <summary>The panel's content, as the shared review model gives it to the panel.</summary>
     private static string PanelText(ReviewSession session)
     {
@@ -119,7 +147,7 @@ public sealed class ScreenshotTests(RhinoHost host, ITestOutputHelper output)
             lines.Add("");
             lines.Add($"== Card: {card.Status} · {card.Title} [{card.Badge}] · {card.Meta}");
             lines.Add($"Changed · {card.Changed.Count}");
-            lines.AddRange(card.Changed.Select(c => $"  {c.Property}: {c.From ?? "—"} → {c.To ?? "—"}"));
+            lines.AddRange(card.Changed.Select(c => $"  {c.Property}: " + (c.Text ?? $"{c.From ?? "none"} → {c.To ?? "none"}")));
             lines.AddRange(card.Why.Select(w => "  why: " + w));
             lines.Add($"Unchanged · {card.Unchanged.Count}: {string.Join(", ", card.Unchanged)}");
         }

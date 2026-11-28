@@ -39,8 +39,17 @@ public sealed record ReviewRow
 
 public sealed record ReviewGroup(ReviewGroupKind Kind, string Label, IReadOnlyList<ReviewRow> Rows);
 
-/// <summary>One line of an object card: a property, from → to. Null is "none" or "not there".</summary>
-public sealed record CardChange(string Property, string? From, string? To);
+/// <summary>
+/// One line of an object card: a property, from → to (null is "none" or "not there"), or, when the change has no two
+/// values to set side by side (a move, a shape edit, an added object), <see cref="Text"/>, which says what happened.
+/// </summary>
+public sealed record CardChange(string Property, string? From, string? To)
+{
+    public string? Text { get; init; }
+
+    /// <summary>A change described in words, with no from → to.</summary>
+    public static CardChange Described(string property, string text) => new(property, null, null) { Text = text };
+}
 
 /// <summary>
 /// The object card for a row: status, title, badge and where it sits; <c>Changed · N</c> with from → to; why it is
@@ -275,15 +284,15 @@ public sealed class Review
         string layer = Describe.Layers(Run.LayersOf(s));
         return s.Kind switch
         {
-            ChangeKind.Added => new("object", null, $"added on {layer}"),
-            ChangeKind.Removed => new("object", $"on {layer}", null),
-            _ => s.Change is not { } c ? new("object", null, "changed") : c.Property switch
+            ChangeKind.Added => CardChange.Described("object", $"added on {layer}"),
+            ChangeKind.Removed => CardChange.Described("object", $"removed from {layer}"),
+            _ => s.Change is not { } c ? CardChange.Described("object", "changed") : c.Property switch
             {
                 PropertyKind.Transform or PropertyKind.Geometry =>
-                    new(Describe.Name(c.Property), null, Describe.Change(c, single is { } p ? Run.GeometryOf(p) : null)),
+                    CardChange.Described(Describe.Name(c.Property), Describe.Change(c, single is { } p ? Run.GeometryOf(p) : null)),
                 PropertyKind.UserText => new($"user text {c.Key}", c.From, c.To),
-                PropertyKind.BlockContent => new($"nested block {c.Key}", null, "edited"),
-                PropertyKind.Pairing => new("pairing", null, "needs review"),
+                PropertyKind.BlockContent => CardChange.Described($"nested block {c.Key}", "edited"),
+                PropertyKind.Pairing => CardChange.Described("pairing", "needs review"),
                 _ => new(Describe.Name(c.Property), Describe.Value(c.From, c.FromSource), Describe.Value(c.To, c.ToSource)),
             },
         };
@@ -293,11 +302,11 @@ public sealed class Review
     {
         TableEventKind.Renamed => [new("name", e.From, e.To)],
         TableEventKind.Reparented => [new("parent", e.From ?? "top level", e.To ?? "top level")],
-        TableEventKind.Added => [new(e.Table.ToString().ToLowerInvariant(), null, "added")],
-        TableEventKind.Removed => [new(e.Table.ToString().ToLowerInvariant(), e.Label, null)],
-        TableEventKind.Split => [.. e.Shares.Select(s => new CardChange("→ " + s.Label, null,
+        TableEventKind.Added => [CardChange.Described(e.Table.ToString().ToLowerInvariant(), "added")],
+        TableEventKind.Removed => [CardChange.Described(e.Table.ToString().ToLowerInvariant(), "deleted")],
+        TableEventKind.Split => [.. e.Shares.Select(s => CardChange.Described("→ " + s.Label,
             $"{Describe.Plural(s.Objects, "object")} ({s.Share.ToString("P0", System.Globalization.CultureInfo.InvariantCulture)})"))],
-        TableEventKind.PropertyChanged when e.Property == PropertyKind.Content => [new(e.Table == TableKind.Block ? "definition" : "settings", null, "edited")],
+        TableEventKind.PropertyChanged when e.Property == PropertyKind.Content => [CardChange.Described(e.Table == TableKind.Block ? "definition" : "settings", "edited")],
         _ => [new($"{e.Table.ToString().ToLowerInvariant()} {Describe.Name(e.Property)}", e.From, e.To)],
     };
 

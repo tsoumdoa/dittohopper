@@ -52,9 +52,11 @@ that registration again, but only when it points at the test folder, never a rea
 
 `ScreenshotTests` writes evidence, not a gate: set `DITTOHOPPER_SCREENSHOTS` to a folder and Rhino
 boots with a hidden window instead of none. It opens a generated revision of the design mock,
-edits it, reviews it and captures the Perspective view with the review drawn, plus the panel's
-content as text (WPF doesn't render in the in-process host, so the panel itself can't be
-captured). `DITTOHOPPER_SCREENSHOT_HUD` (`CardAndTags`, `Card`, `Strip`, `Off`) and
+edits it, reviews it and captures the Perspective view with the review drawn. The panel's
+painted parts (the Changes list, the object card and the Unchanged tab) are saved as images,
+painted into Eto bitmaps the way the panel paints them; its text boxes and tabs can't be captured
+(the whole control comes out blank in the in-process host), so the whole panel's content is
+also written as text. `DITTOHOPPER_SCREENSHOT_HUD` (`CardAndTags`, `Card`, `Strip`, `Off`) and
 `DITTOHOPPER_SCREENSHOT_SELECT` (a row name) vary it; `DITTOHOPPER_SCREENSHOT_STALE=1` moves a
 column after the review and asserts that Rhino's own document events made the review stale.
 Capture once per run: a second capture
