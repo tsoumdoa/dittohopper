@@ -416,6 +416,49 @@ public sealed class ComponentTests(RhinoHost host, ITestOutputHelper output)
         }
     });
 
+    /// <summary>
+    /// A live snapshot is cached per document version (DocumentChanges): a light's new intensity, which its own event
+    /// list once missed, gives a new snapshot on recompute; with no change, the cached one is reused.
+    /// </summary>
+    [RhinoFact]
+    public void ALiveSnapshotFollowsEveryChangeTheTrackerCounts() => host.Run(() =>
+    {
+        Gh.Load();
+        using var rhino = RhinoDoc.CreateHeadless(null);
+        var previous = RhinoDoc.ActiveDoc;
+        RhinoDoc.ActiveDoc = rhino;
+        try
+        {
+            int index = rhino.Lights.Add(new Light { LightStyle = LightStyle.WorldPoint, Location = new Point3d(0, 0, 3000), Intensity = 0.5 });
+            Guid light = rhino.Lights[index].Id;
+            using var doc = new GH_Document { Enabled = true };
+            var snap = Gh.Add<SnapshotComponent>(doc);
+            Gh.Solve(doc);
+            var first = ((SnapshotGoo)Assert.Single(Gh.Out(snap, 0))).Value;
+            ulong Hash(RhinoSnapshot s) => s.Model.Objects.Single(o => o.Id == light).Geometry.Hash;
+
+            snap.ExpireSolution(false);
+            Gh.Solve(doc);
+            Assert.Same(first, ((SnapshotGoo)Assert.Single(Gh.Out(snap, 0))).Value);
+
+            var brighter = rhino.Lights[index].LightGeometry;
+            brighter.Intensity = 0.9;
+            Assert.True(rhino.Lights.Modify(index, brighter));
+            // A headless document raises no events: count the light-table change as DocumentChanges' handler does.
+            DocumentChanges.Note(rhino);
+            snap.ExpireSolution(false);
+            Gh.Solve(doc);
+            var second = ((SnapshotGoo)Assert.Single(Gh.Out(snap, 0))).Value;
+            Assert.NotSame(first, second);
+            Assert.NotEqual(Hash(first), Hash(second));
+            Assert.Equal(DocumentChanges.Count(rhino), second.DocumentVersion);
+        }
+        finally
+        {
+            RhinoDoc.ActiveDoc = previous;
+        }
+    });
+
     /// <summary>Unchanged context once drew in the viewport's own grey and vanished.</summary>
     [RhinoFact]
     public void UnchangedObjectsStandOutFromTheDefaultViewportBackground() => host.Run(() =>

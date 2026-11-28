@@ -189,6 +189,13 @@ public sealed class PlugInTests(RhinoHost host, ITestOutputHelper output)
             Assert.InRange(warning.At.X, 0, 420 - Measure(warning.Text, warning.Height).Width);
             Assert.True(narrow.OfType<HudText>().Count(t => t.Text.EndsWith("unchanged", StringComparison.Ordinal)) == 0, "the last chip goes first");
 
+            // In a very narrow view the warning itself is cut short, and the gate and every word still fit.
+            var tiny = global::DittoHopper.PlugIn.Hud.Layout(session.Review!, null, HudMode.Strip, new Size(200, 600), Measure, [], true);
+            var cut = tiny.OfType<HudText>().Single(t => t.Text.StartsWith("Model", StringComparison.Ordinal));
+            Assert.EndsWith("…", cut.Text);
+            Assert.Contains(tiny.OfType<HudText>(), t => t.Text == "Gate stale");
+            Assert.All(tiny.OfType<HudText>(), t => Assert.InRange(t.At.X, 0, 200 - Measure(t.Text, t.Height).Width));
+
             // Scope and gate re-use the reviewed snapshots, so they don't clear it.
             session.SetScope("Walls");
             session.SetGate("Structure::Columns");
@@ -407,6 +414,9 @@ public sealed class PlugInTests(RhinoHost host, ITestOutputHelper output)
             var texts = global::DittoHopper.PlugIn.Hud.Layout(session.Review!, null, HudMode.Card, new Size(1200, 800), Measure, [], session.Stale)
                 .OfType<HudText>().Select(t => t.Text).ToList();
             Assert.DoesNotContain(texts, t => t.Contains("PASS", StringComparison.Ordinal));
+            // Refresh can only diff a Grasshopper result again: B has still moved on, so it stays stale.
+            session.Refresh();
+            Assert.True(session.Stale);
 
             // B's document closes: the review retires, and the held result is refused rather than shown elsewhere.
             session.DocumentClosed(doc); // what the plug-in's CloseDocument handler does; see Edited

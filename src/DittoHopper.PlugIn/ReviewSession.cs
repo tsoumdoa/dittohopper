@@ -138,7 +138,8 @@ public sealed class ReviewSession
 
     /// <summary>
     /// Reads A and B again when the review knows where they came from, then diffs them with the current scope; that
-    /// clears <see cref="Stale"/>. A result from Grasshopper can only be diffed again: recompute it there.
+    /// clears <see cref="Stale"/> unless the document changed again meanwhile. A result from Grasshopper can only be
+    /// diffed again: recompute it there.
     /// </summary>
     public void Refresh()
     {
@@ -146,6 +147,7 @@ public sealed class ReviewSession
         if (Source is not { } source)
         {
             Rediff(Run.A, Run.B);
+            Stale = Run.BOutOfDate;
             Status = Stale ? "This review came from Grasshopper: recompute the definition to review the model as it is now." : null;
             Notify();
             return;
@@ -165,7 +167,8 @@ public sealed class ReviewSession
                 throw;
             }
             Status = null;
-            Stale = false;
+            // A change made while the document was read or diffed still counts: the same check as Show.
+            Stale = Run.BOutOfDate;
         }
         catch (Exception ex) when (ex is InvalidOperationException or IOException or InvalidDataException or ArgumentException)
         {

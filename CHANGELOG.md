@@ -40,4 +40,5 @@
   snapshots are disposed with their review; Grasshopper output is unchanged from v0. `DocumentChanges` counts every
   document change a snapshot can see (objects, lights, attributes, every table it reads, units and tolerances); a
   live snapshot records the count, so a held Grasshopper result of a changed document opens stale, and one whose
-  document closed is refused.
+  document closed is refused. Grasshopper's Snapshot caches a live snapshot per document change count and expires on
+  the same tracker, so a light, hatch pattern or dimension style edit is re-captured too.

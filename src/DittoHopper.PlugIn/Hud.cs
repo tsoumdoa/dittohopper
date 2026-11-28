@@ -146,6 +146,12 @@ public static class Hud
             chipsWidth = 0;
         }
         if (chips.Count == 0) chipShapes.Clear();
+        if (stale && chipsWidth + wordsWidth > room)
+        {
+            // Even without chips it doesn't fit: shorten the warning, never the gate.
+            float rest = wordsWidth - (measure(words[0].Text, Small).Width + 8);
+            words[0] = (Ellipsize(words[0].Text, room - rest - 8, Small, measure), Look);
+        }
 
         var body = new List<HudShape>();
         float x = stale ? 0 : chipsWidth + 8;
@@ -213,6 +219,18 @@ public static class Hud
     {
         shapes.Add(new HudText(text, new PointF(x, y), color, height));
         return y + Math.Max(measure(text, height).Height, height) + 2;
+    }
+
+    /// <summary>The text, cut with an ellipsis to fit <paramref name="width"/> pixels; at least the ellipsis.</summary>
+    public static string Ellipsize(string text, float width, int height, Measure measure)
+    {
+        if (measure(text, height).Width <= width) return text;
+        for (int n = text.Length - 1; n > 0; n--)
+        {
+            string cut = text[..n].TrimEnd() + "…";
+            if (measure(cut, height).Width <= width) return cut;
+        }
+        return "…";
     }
 
     /// <summary>Greedy word wrap to <paramref name="width"/> pixels.</summary>
