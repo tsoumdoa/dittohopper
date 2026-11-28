@@ -225,8 +225,14 @@ public sealed class DiffPreviewComponent : DittoComponent
         Status.Modified => Icons.Modified,
         Status.Previous => Color.FromArgb(150, Icons.Modified),
         Status.Event => Icons.Event,
-        _ => Icons.Unchanged,
+        _ => UnchangedWire,
     };
+
+    /// <summary>
+    /// Darker than the icons' grey: that one (#9CA3AF) is almost exactly Rhino's default viewport background, so
+    /// unchanged context vanished. This slate keeps a 3:1 luminance contrast on the default grey and on white.
+    /// </summary>
+    public static readonly Color UnchangedWire = Color.FromArgb(55, 65, 81);
 
     private static void Wires(DisplayPipeline p, GeometryBase g, Color c, int width)
     {
