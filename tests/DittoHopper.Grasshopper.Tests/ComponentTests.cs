@@ -414,6 +414,28 @@ public sealed class ComponentTests(RhinoHost host, ITestOutputHelper output)
         }
     });
 
+    /// <summary>Unchanged context once drew in the viewport's own grey and vanished.</summary>
+    [RhinoFact]
+    public void UnchangedObjectsStandOutFromTheDefaultViewportBackground() => host.Run(() =>
+    {
+        var unchanged = DiffPreviewComponent.ColorOf(DiffPreviewComponent.Status.Unchanged);
+        var background = global::Rhino.ApplicationSettings.AppearanceSettings.ViewportBackgroundColor;
+        output.WriteLine($"viewport background {background}, unchanged {unchanged}");
+        Assert.True(Contrast(unchanged, background) >= 3, $"{Contrast(unchanged, background):0.00}:1 on {background}");
+        Assert.True(Contrast(unchanged, Color.White) >= 3);
+
+        static double Contrast(Color a, Color b)
+        {
+            double la = Luminance(a), lb = Luminance(b);
+            return (Math.Max(la, lb) + 0.05) / (Math.Min(la, lb) + 0.05);
+        }
+        static double Luminance(Color c)
+        {
+            static double Channel(int v) { double s = v / 255.0; return s <= 0.03928 ? s / 12.92 : Math.Pow((s + 0.055) / 1.055, 2.4); }
+            return 0.2126 * Channel(c.R) + 0.7152 * Channel(c.G) + 0.0722 * Channel(c.B);
+        }
+    });
+
     private static void BuildModel(File3dm f)
     {
         Model.Setup(f);
