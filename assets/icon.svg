@@ -1,4 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#d97706"/>
-  <text x="32" y="32" dy="0.35em" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="32" font-weight="600" fill="#ffffff">D</text>
+  <!-- A ditto mark (〃, "same as above") whose second stroke has hopped: white is unchanged, amber is what
+       changed, and the faint stroke is its ghost, where it was. Drawn the same way in Icons.Logo. -->
+  <rect width="64" height="64" rx="14" fill="#262a30"/>
+  <g stroke-width="10" stroke-linecap="round">
+    <line x1="40.5" y1="27" x2="34.5" y2="47" stroke="#9ca3af" stroke-opacity="0.4"/>
+    <line x1="24.5" y1="27" x2="18.5" y2="47" stroke="#ffffff"/>
+    <line x1="45.5" y1="17" x2="39.5" y2="37" stroke="#f59e0b"/>
+  </g>
 </svg>
