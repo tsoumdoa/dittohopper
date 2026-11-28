@@ -37,4 +37,7 @@
 - v1a review fixes: a review of the open document goes stale when the document changes (banner, gate withdrawn,
   the reviewed snapshot drawn) until Refresh; a review draws only in its host document and is retired when it
   closes; table events reach their members (a group rename selects its members) without painting them; command
-  snapshots are disposed with their review; Grasshopper output is unchanged from v0.
+  snapshots are disposed with their review; Grasshopper output is unchanged from v0. `DocumentChanges` counts every
+  document change a snapshot can see (objects, lights, attributes, every table it reads, units and tolerances); a
+  live snapshot records the count, so a held Grasshopper result of a changed document opens stale, and one whose
+  document closed is refused.

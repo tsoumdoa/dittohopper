@@ -121,22 +121,41 @@ public static class Hud
         shapes.AddRange(body);
     }
 
+    /// <summary>
+    /// One line at the bottom: the chips, then the gate. A stale review leads with its warning and the withdrawn gate, and
+    /// drops chips from the end until the line fits the view, so the warning is never cut off.
+    /// </summary>
     private static void Strip(List<HudShape> shapes, Review review, Size view, Measure measure, bool stale)
     {
-        var body = new List<HudShape>();
-        float y = view.Height - 36;
-        float end = Chips(body, review.Chips, 0, y, float.MaxValue, measure, wrap: false, out float width);
+        float y = view.Height - 36, room = view.Width - 36;
+        var words = new List<(string Text, Color Color)>();
+        if (stale) words.Add((ReviewSession.StaleText, Look));
         if (review.Gate is { } gate)
+            words.Add(stale ? ("Gate stale", Look) : ($"Gate {(gate.Pass ? "passes" : "fails")}", gate.Pass ? Pass : Fail));
+        float wordsWidth = words.Sum(w => measure(w.Text, Small).Width + 8);
+
+        var chips = review.Chips.ToList();
+        var chipShapes = new List<HudShape>();
+        float chipsWidth = 0, end = y + measure("Ag", Small).Height + 4;
+        while (chips.Count > 0)
         {
-            string text = stale ? "Gate stale" : $"Gate {(gate.Pass ? "passes" : "fails")}";
-            body.Add(new HudText(text, new PointF(width + 8, y + 2), stale ? Look : gate.Pass ? Pass : Fail, Small));
-            width += 8 + measure(text, Small).Width;
+            chipShapes.Clear();
+            end = Chips(chipShapes, chips, 0, y, float.MaxValue, measure, wrap: false, out chipsWidth);
+            if (!stale || chipsWidth + wordsWidth <= room) break;
+            chips.RemoveAt(chips.Count - 1);
+            chipsWidth = 0;
         }
-        if (stale)
+        if (chips.Count == 0) chipShapes.Clear();
+
+        var body = new List<HudShape>();
+        float x = stale ? 0 : chipsWidth + 8;
+        foreach (var (text, color) in words)
         {
-            body.Add(new HudText(ReviewSession.StaleText, new PointF(width + 8, y + 2), Look, Small));
-            width += 8 + measure(ReviewSession.StaleText, Small).Width;
+            body.Add(new HudText(text, new PointF(x, y + 2), color, Small));
+            x += measure(text, Small).Width + 8;
         }
+        body.AddRange(stale ? chipShapes.Select(s => Shift(s, x)) : chipShapes);
+        float width = stale ? x + chipsWidth : x - 8;
         float left = Math.Max(8, (view.Width - width) / 2);
         shapes.Add(new HudBox(new RectangleF(left - 10, y - 5, width + 20, end - y + 10), (end - y + 10) / 2, Panel, Color.Transparent));
         shapes.AddRange(body.Select(s => Shift(s, left)));

@@ -67,6 +67,7 @@ public sealed class ReviewSession
     private BoundingBox extent = BoundingBox.Empty;
     private HashSet<Guid> bIds = [];
     private uint? host;
+    private global::Rhino.UnitSystem? sceneUnits;
     /// <summary>True when the review read its snapshots itself (the command), so it disposes them.</summary>
     private bool owned;
 
@@ -106,20 +107,30 @@ public sealed class ReviewSession
     /// <summary>
     /// Shows a result: replaces the review, keeps the gate and HUD mode, and opens the panel. <paramref name="source"/>
     /// is how the command read it, and the review then owns the snapshots; null for a result from Grasshopper.
+    /// A result whose B document has changed since it was captured (a cached Grasshopper result, say) starts stale. One
+    /// whose B document has closed is refused, and the current review stays: it is never moved to another document.
+    /// Returns null when shown, else why not.
     /// </summary>
-    public void Show(DiffRun run, ReviewSource? source)
+    public string? Show(DiffRun run, ReviewSource? source)
     {
+        if (run.BDocumentClosed)
+        {
+            Status = "B's document was closed, so this result can't be reviewed. Diff the model again.";
+            Changed?.Invoke();
+            return Status;
+        }
         Set(run);
         owned = source is not null;
         Source = source;
         host = run.BDocument?.RuntimeSerialNumber ?? source?.Document ?? RhinoDoc.ActiveDoc?.RuntimeSerialNumber;
         Scope = run.Result.Settings.ScopeGlob ?? "";
         Status = null;
-        Stale = false;
+        Stale = run.BOutOfDate;
         Selected = Hover = -1;
         ReviewConduit.Instance.Enabled = true;
         Notify();
         OpenPanel?.Invoke();
+        return null;
     }
 
     /// <summary>Opens the panel; set by the plug-in, so a headless session can run without one.</summary>
@@ -142,7 +153,17 @@ public sealed class ReviewSession
         try
         {
             var (a, b) = source.Load();
-            Rediff(a, b);
+            try
+            {
+                Rediff(a, b);
+            }
+            catch
+            {
+                // The diff failed: these snapshots never became the review's.
+                a.Dispose();
+                b.Dispose();
+                throw;
+            }
             Status = null;
             Stale = false;
         }
@@ -225,27 +246,16 @@ public sealed class ReviewSession
     }
 
     /// <summary>
-    /// An object or a table of <paramref name="doc"/> changed. When that is live B, the review no longer describes the
-    /// model: it is stale until a Refresh.
+    /// Something a snapshot reads changed in <paramref name="doc"/> (<see cref="DocumentChanges"/>). The drawing follows
+    /// the host document's units, so its scene is rebuilt when they changed. When it is live B, the review no longer
+    /// describes the model: it is stale until a Refresh.
     /// </summary>
     public void ModelChanged(RhinoDoc doc)
     {
+        if (IsHost(doc) && sceneUnits is { } units && units != doc.ModelUnitSystem) scene = null;
         if (Stale || !IsBDocument(doc)) return;
         Stale = true;
         Changed?.Invoke();
-    }
-
-    /// <summary>
-    /// <paramref name="doc"/>'s properties changed. The drawing follows the host document's units, so its scene is
-    /// rebuilt; when it is live B and its units or tolerance differ from the reviewed ones, the review is stale.
-    /// </summary>
-    public void PropertiesChanged(RhinoDoc doc)
-    {
-        if (!IsHost(doc) || Run is null) return;
-        scene = null;
-        var reviewed = Run.ModelB.Info;
-        if (IsBDocument(doc) && (doc.ModelUnitSystem.ToString() != reviewed.Units.ToString() || doc.ModelAbsoluteTolerance != reviewed.AbsoluteTolerance))
-            ModelChanged(doc);
     }
 
     /// <summary>A document closed: the review goes with its host.</summary>
@@ -267,6 +277,7 @@ public sealed class ReviewSession
             if (scene is null && Run is { } run)
             {
                 scene = DiffScene.Build(run, ghost: true, Document);
+                sceneUnits = Document?.ModelUnitSystem;
                 // Each object's extent once per build: the conduit's bounding box and the HUD's anchors use them every frame.
                 boxes = [];
                 extent = BoundingBox.Empty;

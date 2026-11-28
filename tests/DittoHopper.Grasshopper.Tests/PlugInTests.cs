@@ -183,6 +183,12 @@ public sealed class PlugInTests(RhinoHost host, ITestOutputHelper output)
                 Assert.Contains(ReviewSession.StaleText, string.Join(" ", texts));
             }
 
+            // In a narrow view the strip drops chips, never the warning.
+            var narrow = global::DittoHopper.PlugIn.Hud.Layout(session.Review!, null, HudMode.Strip, new Size(420, 600), Measure, [], true);
+            var warning = narrow.OfType<HudText>().Single(t => t.Text == ReviewSession.StaleText);
+            Assert.InRange(warning.At.X, 0, 420 - Measure(warning.Text, warning.Height).Width);
+            Assert.True(narrow.OfType<HudText>().Count(t => t.Text.EndsWith("unchanged", StringComparison.Ordinal)) == 0, "the last chip goes first");
+
             // Scope and gate re-use the reviewed snapshots, so they don't clear it.
             session.SetScope("Walls");
             session.SetGate("Structure::Columns");
@@ -359,11 +365,65 @@ public sealed class PlugInTests(RhinoHost host, ITestOutputHelper output)
     });
 
     /// <summary>
-    /// Tells the review its document changed, as the plug-in's RhinoDoc handlers do. Headless documents (the only kind
-    /// a window-less RhinoCore makes) raise no RhinoDoc events at all, so the tests signal it themselves; the screenshot
-    /// run checks the real events on a windowed document.
+    /// Counts a change to the document, as DocumentChanges' RhinoDoc handlers do; the plug-in hears it from there.
+    /// Headless documents (the only kind a window-less RhinoCore makes) raise no RhinoDoc events at all, so the tests
+    /// signal it themselves; the screenshot run checks the real events on a windowed document.
     /// </summary>
-    private static void Edited(RhinoDoc doc) => ReviewSession.Current.ModelChanged(doc);
+    private static void Edited(RhinoDoc doc) => DocumentChanges.Note(doc);
+
+    /// <summary>
+    /// A result held back (a Data Dam, say) and shown after its document changed starts stale: no outdated PASS. One whose
+    /// document closed is refused, and never moves to another document.
+    /// </summary>
+    [RhinoFact]
+    public void AHeldResultOfAChangedDocumentIsStaleAndAClosedOneIsRefused() => host.Run(() =>
+    {
+        PlugInLoader.Load();
+        var pair = FixturePair.Create("review-held", BuildModel, _ => { });
+        var doc = RhinoDoc.OpenHeadless(pair.A);
+        var session = ReviewSession.Current;
+        try
+        {
+            session.SetGate("Structure::*");
+            // As Grasshopper makes it: the last save against the live document, snapshots it owns.
+            var (a, b) = RhinoSnapshot.DocumentVsLastSave(doc);
+            var held = new DiffRun(RhinoDiff.Diff(a, b), a, b);
+            Assert.NotNull(held.B.DocumentVersion);
+            Assert.Null(ReviewHub.Show(held));
+            Assert.False(session.Stale);
+            Assert.True(session.Review!.Gate!.Pass);
+
+            // Another review in between, then the column moves and the held result is shown again.
+            DittoReviewCommand.Review(new ReviewSource(doc.RuntimeSerialNumber, pair.A, pair.B));
+            Assert.False(session.Stale);
+            Move(doc, "column", 100);
+            Edited(doc);
+            Assert.False(session.Stale); // a review of two files doesn't follow the document
+            Assert.True(held.BOutOfDate);
+            Assert.Null(ReviewHub.Show(held));
+            Assert.Same(held, session.Run);
+            Assert.True(session.Stale);
+            static SizeF Measure(string text, int height) => new(text.Length * height * 0.55f, height * 1.3f);
+            var texts = global::DittoHopper.PlugIn.Hud.Layout(session.Review!, null, HudMode.Card, new Size(1200, 800), Measure, [], session.Stale)
+                .OfType<HudText>().Select(t => t.Text).ToList();
+            Assert.DoesNotContain(texts, t => t.Contains("PASS", StringComparison.Ordinal));
+
+            // B's document closes: the review retires, and the held result is refused rather than shown elsewhere.
+            session.DocumentClosed(doc); // what the plug-in's CloseDocument handler does; see Edited
+            doc.Dispose();
+            Assert.Null(session.Run);
+            Assert.True(held.BDocumentClosed);
+            var problem = ReviewHub.Show(held);
+            Assert.StartsWith("B's document was closed", problem);
+            Assert.Null(session.Run);
+            Assert.Equal(problem, session.Status);
+        }
+        finally
+        {
+            session.SetGate("");
+            if (RhinoDoc.FromRuntimeSerialNumber(doc.RuntimeSerialNumber) is not null) doc.Dispose();
+        }
+    });
 
     private static void Move(RhinoDoc doc, string truth, double dx)
     {

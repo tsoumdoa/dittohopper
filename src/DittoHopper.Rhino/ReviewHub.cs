@@ -11,23 +11,27 @@ public static class ReviewHub
     /// <summary>The Rhino plug-in's id (DittoHopper.rhp). Never change it.</summary>
     public static readonly Guid PlugInId = new("a066bd22-92f8-42bf-95ad-9a98373f7e3a");
 
-    private static Action<DiffRun>? show;
+    private static Func<DiffRun, string?>? show;
 
-    /// <summary>Called by the plug-in when it loads (and with null when it shuts down).</summary>
-    public static void Register(Action<DiffRun>? handler) => show = handler;
+    /// <summary>
+    /// Called by the plug-in when it loads (and with null when it shuts down). The handler shows a result and returns
+    /// null, or returns why it can't.
+    /// </summary>
+    public static void Register(Func<DiffRun, string?>? handler) => show = handler;
 
     /// <summary>True once the plug-in has registered.</summary>
     public static bool Ready => show is not null;
 
     /// <summary>
     /// Shows a result in the review panel, loading the plug-in first if Rhino hasn't yet. Call on Rhino's UI thread.
-    /// False when the plug-in is not installed or did not load.
+    /// Returns null when it was shown, else why not: the plug-in is not installed or did not load, or the panel
+    /// refused the result.
     /// </summary>
-    public static bool Show(DiffRun run)
+    public static string? Show(DiffRun run)
     {
         if (show is null) global::Rhino.PlugIns.PlugIn.LoadPlugIn(PlugInId);
-        if (show is not { } handler) return false;
-        handler(run);
-        return true;
+        return show is { } handler
+            ? handler(run)
+            : "The DittoHopper Rhino plug-in did not load, so there is no review panel. Reinstall the DittoHopper package.";
     }
 }

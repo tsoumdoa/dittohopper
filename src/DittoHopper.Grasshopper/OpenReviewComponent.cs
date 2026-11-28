@@ -35,11 +35,10 @@ public sealed class OpenReviewComponent : DittoComponent
             Message = "Sent";
             return;
         }
-        if (!ReviewHub.Show(run))
+        if (ReviewHub.Show(run) is { } problem)
         {
             Message = null;
-            AddRuntimeMessage(GH_RuntimeMessageLevel.Error,
-                "The DittoHopper Rhino plug-in did not load, so there is no review panel. Reinstall the DittoHopper package.");
+            AddRuntimeMessage(GH_RuntimeMessageLevel.Error, problem);
             return;
         }
         sent = run;

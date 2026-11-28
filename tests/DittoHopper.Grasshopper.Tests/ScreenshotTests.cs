@@ -1,5 +1,6 @@
 using System.Drawing;
 using DittoHopper.PlugIn;
+using DittoHopper.Rhino;
 using DittoHopper.Rhino.Tests;
 using Rhino;
 using Rhino.Display;
@@ -79,6 +80,23 @@ public sealed class ScreenshotTests(RhinoHost host, ITestOutputHelper output)
         string path = Path.Combine(folder, name + "-viewport.png");
         shot.Save(path, System.Drawing.Imaging.ImageFormat.Png);
         output.WriteLine(path);
+        if (stale)
+        {
+            // The tables a snapshot reads beyond objects and layers raise real events here (headless documents raise none).
+            long before = DocumentChanges.Count(doc);
+            int light = doc.Lights.Add(new Light { LightStyle = LightStyle.WorldPoint, Location = new Point3d(0, 0, 5000), Intensity = 0.5 });
+            long added = DocumentChanges.Count(doc);
+            var changed = doc.Lights[light].LightGeometry;
+            changed.Intensity = 0.9;
+            Assert.True(doc.Lights.Modify(light, changed));
+            long lit = DocumentChanges.Count(doc);
+            doc.DimStyles.Add("DittoHopper probe");
+            long dims = DocumentChanges.Count(doc);
+            doc.HatchPatterns.Add(new HatchPattern { Name = "DittoHopper probe" });
+            long hatches = DocumentChanges.Count(doc);
+            output.WriteLine($"changes: {before} → light added {added} → intensity {lit} → dim style {dims} → hatch pattern {hatches}");
+            Assert.True(added > before && lit > added && dims > lit && hatches > dims, "each table change is counted");
+        }
         // The shutdown of a windowed Rhino can hang, so don't leave the plug-in registered until then.
         PlugInLoader.Forget();
     });
@@ -111,7 +129,7 @@ public sealed class ScreenshotTests(RhinoHost host, ITestOutputHelper output)
         foreach (var l in r.Unchanged)
             lines.Add($"  {l.Path}: {l.Identical} of {l.Objects} · {l.Names}" + (l.ThroughTables > 0 ? $" · {l.ThroughTables} look different through a table entry" : ""));
         lines.Add("");
-        lines.Add("Strip: " + r.Strip);
+        lines.Add("Strip: " + (session.Stale ? $"{ReviewSession.StaleText} · Gate stale · {string.Join(" · ", r.Chips.Select(c => c.Text))}" : r.Strip));
         return string.Join(System.Environment.NewLine, lines);
     }
 

@@ -44,8 +44,8 @@ The same project tests the Rhino plug-in (`PlugInTests`): it loads the built `Di
 from the test folder, checks that the plug-in, the `.gha` and the shared DLLs load once each
 and share `ReviewHub`, runs `DittoReview`'s logic on a headless document and on a file pair, sends
 a result through Open Review, lays out the HUD, and checks that an edit makes the review stale
-until Refresh. Headless documents raise no `RhinoDoc` events, so those tests signal the change
-themselves, as the plug-in's handlers do; the screenshot run checks the real events.
+until Refresh. Headless documents raise no `RhinoDoc` events, so those tests count the change
+themselves (`DocumentChanges.Note`); the screenshot run checks the real events, tables included.
 Rhino remembers a plug-in loaded by path
 (`HKCU\Software\McNeel\Rhinoceros\8.0\Plug-Ins\{id}`, plus its panel settings), so the tests delete
 that registration again, but only when it points at the test folder, never a real install's.

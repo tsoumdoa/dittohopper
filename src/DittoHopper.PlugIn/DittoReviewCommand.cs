@@ -72,7 +72,18 @@ public sealed class DittoReviewCommand : Command
         var (a, b) = source.Load();
         string scope = ReviewSession.Current.Scope;
         var settings = new DiffSettings { ScopeGlob = scope.Length == 0 ? null : scope };
-        var run = new DiffRun(RhinoDiff.Diff(a, b, settings), a, b);
+        DiffRun run;
+        try
+        {
+            run = new DiffRun(RhinoDiff.Diff(a, b, settings), a, b);
+        }
+        catch
+        {
+            // The diff failed: nothing owns these snapshots yet.
+            a.Dispose();
+            b.Dispose();
+            throw;
+        }
         ReviewSession.Current.Show(run, source);
         return run;
     }

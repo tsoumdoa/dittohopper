@@ -43,6 +43,12 @@ public sealed class RhinoSnapshot : IDisposable
     /// <summary>The runtime serial number of the document this is a live snapshot of; null for a file.</summary>
     public uint? DocumentSerialNumber { get; private set; }
 
+    /// <summary>
+    /// For a live snapshot, <see cref="DocumentChanges.Count"/> of its document when it was taken: when the count has
+    /// moved since, the document has changed and the snapshot is out of date. Null for a file.
+    /// </summary>
+    public long? DocumentVersion { get; private set; }
+
     /// <summary>Owned copies of the top-level geometry, by object id.</summary>
     internal IReadOnlyDictionary<Guid, Entry> Geometry
     {
@@ -73,7 +79,7 @@ public sealed class RhinoSnapshot : IDisposable
     /// the view does nothing, and it is unusable once this snapshot is disposed.
     /// </summary>
     public RhinoSnapshot WithModel(ModelSnapshot model) =>
-        new(model, Geometry, Names, definitions, owner ?? this) { DocumentSerialNumber = DocumentSerialNumber };
+        new(model, Geometry, Names, definitions, owner ?? this) { DocumentSerialNumber = DocumentSerialNumber, DocumentVersion = DocumentVersion };
 
     /// <summary>
     /// A block definition's member geometry, in definition space (empty for a linked or unknown definition). Nested
@@ -133,6 +139,9 @@ public sealed class RhinoSnapshot : IDisposable
     /// </summary>
     public static RhinoSnapshot FromDocument(RhinoDoc doc, string? label = null)
     {
+        DocumentChanges.Start();
+        long version = DocumentChanges.Count(doc);
+        DocumentChanges.Seen(doc);
         var src = new ModelSource
         {
             Label = label ?? (string.IsNullOrEmpty(doc.Name) ? "Untitled" : doc.Name),
@@ -174,6 +183,7 @@ public sealed class RhinoSnapshot : IDisposable
         if (referenceLayers > 0) src.Skipped.Add($"{referenceLayers} worksession reference layers");
         var snapshot = SnapshotReader.Read(src);
         snapshot.DocumentSerialNumber = doc.RuntimeSerialNumber;
+        snapshot.DocumentVersion = version;
         return snapshot;
     }
 

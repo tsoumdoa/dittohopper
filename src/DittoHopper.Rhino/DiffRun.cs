@@ -15,6 +15,12 @@ public sealed class DiffRun(DiffResult result, RhinoSnapshot a, RhinoSnapshot b)
     /// <summary>The open document B is a live snapshot of, or null when B is a file (or that document is closed).</summary>
     public RhinoDoc? BDocument => B.DocumentSerialNumber is uint sn ? RhinoDoc.FromRuntimeSerialNumber(sn) : null;
 
+    /// <summary>B is a live snapshot whose document has since closed.</summary>
+    public bool BDocumentClosed => B.DocumentSerialNumber is not null && BDocument is null;
+
+    /// <summary>B is a live snapshot and its document has changed since: the diff no longer describes it.</summary>
+    public bool BOutOfDate => B.DocumentVersion is long v && BDocument is { } doc && DocumentChanges.Count(doc) != v;
+
     /// <summary>Multiplies lengths in <paramref name="from"/> into the units of a Rhino document; 1 without one.</summary>
     public static double Scale(Core.UnitSystem from, RhinoDoc? doc) =>
         doc is not null && Units.MetersPer(from) is double f && f > 0

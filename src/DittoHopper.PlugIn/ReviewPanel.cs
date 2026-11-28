@@ -142,7 +142,9 @@ public sealed class ReviewPanel : Panel, IPanel
         gateResult.Text = review?.Gate is not { } g ? "" : Session.Stale ? "stale" : g.Pass ? "✓ passes" : $"✕ {g.Why.Count}";
         gateResult.TextColor = Session.Stale ? Color.FromArgb(251, 146, 60, 255)
             : review?.Gate is { Pass: false } ? Color.FromArgb(252, 165, 165, 255) : Color.FromArgb(134, 239, 172, 255);
-        gateResult.ToolTip = review?.Gate is { } why ? string.Join(Environment.NewLine, why.Why) : null;
+        gateResult.ToolTip = review?.Gate is not { } why ? null
+            : Session.Stale ? "The model changed since this review, so the gate was not checked on it. Refresh to check it again."
+            : string.Join(Environment.NewLine, why.Why);
         mode.SelectedIndex = Array.FindIndex(Modes, m => m.Mode == Session.Mode);
         changesPage.Text = $"Changes {Describe.Count(review?.Rows.Count ?? 0)}";
         unchangedPage.Text = $"Unchanged {Describe.Count(review?.Run.Result.UnchangedObjects ?? 0)}";
