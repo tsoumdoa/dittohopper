@@ -23,27 +23,20 @@ public static class Icons
 
     private static readonly Color Tile = Color.FromArgb(38, 42, 48);
     private static readonly Color Ink = Color.White;
-    private static readonly Color LogoTile = Color.FromArgb(217, 119, 6); // assets/icon.svg
     private const float W = 1.75f;
 
     public static Bitmap Create(ComponentIcon icon, int size = 24) => Render(size, 24, 5, Tile, g => Glyph(g, icon));
 
-    /// <summary>The plug-in mark from assets/icon.svg: a white D on an amber tile.</summary>
-    public static Bitmap Logo(int size = 64) => Render(size, 64, 14, LogoTile, g =>
+    /// <summary>
+    /// The plug-in mark from assets/icon.svg: a ditto mark (〃, "same as above") whose second stroke has hopped.
+    /// White is unchanged, amber is what changed, and the faint stroke is its ghost, where it was.
+    /// </summary>
+    public static Bitmap Logo(int size = 64) => Render(size, 64, 14, Tile, g =>
     {
-        using var family = Family();
-        using var path = new GraphicsPath();
-        using var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-        path.AddString("D", family, (int)FontStyle.Bold, 40, new RectangleF(0, 2, 64, 64), format);
-        using var brush = new SolidBrush(Ink);
-        g.FillPath(brush, path);
+        Line(g, Color.FromArgb(102, Unchanged), 10, 40.5f, 27, 34.5f, 47);
+        Line(g, Ink, 10, 24.5f, 27, 18.5f, 47);
+        Line(g, Modified, 10, 45.5f, 17, 39.5f, 37);
     });
-
-    private static FontFamily Family()
-    {
-        try { return new FontFamily("Segoe UI"); }
-        catch (ArgumentException) { return FontFamily.GenericSansSerif; }
-    }
 
     private static Bitmap Render(int size, float unit, float corner, Color tile, Action<Graphics> draw)
     {
