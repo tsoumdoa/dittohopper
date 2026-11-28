@@ -40,6 +40,28 @@ try { dotnet test tests/DittoHopper.Grasshopper.Tests -c Debug }
 finally { Remove-Item Env:DITTOHOPPER_RHINO_TESTS -ErrorAction SilentlyContinue }
 ```
 
+The same project tests the Rhino plug-in (`PlugInTests`): it loads the built `DittoHopper.rhp`
+from the test folder, checks that the plug-in, the `.gha` and the shared DLLs load once each
+and share `ReviewHub`, runs `DittoReview`'s logic on a headless document and on a file pair, sends
+a result through Open Review, and lays out the HUD. Rhino remembers a plug-in loaded by path
+(`HKCU\Software\McNeel\Rhinoceros\8.0\Plug-Ins\{id}`, plus its panel settings), so the tests delete
+that registration again, but only when it points at the test folder, never a real install's.
+
+`ScreenshotTests` writes evidence, not a gate: set `DITTOHOPPER_SCREENSHOTS` to a folder and Rhino
+boots with a hidden window instead of none. It opens a generated revision of the design mock,
+edits it, reviews it and captures the Perspective view with the review drawn, plus the panel's
+content as text (WPF doesn't render in the in-process host, so the panel itself can't be
+captured). `DITTOHOPPER_SCREENSHOT_HUD` (`CardAndTags`, `Card`, `Strip`, `Off`) and
+`DITTOHOPPER_SCREENSHOT_SELECT` (a row name) vary it. Capture once per run: a second capture
+crashed Rhino. The windowed test host can hang on shutdown; stop it (only that `testhost`) when
+the run has passed.
+
+```powershell
+$env:DITTOHOPPER_RHINO_TESTS = '1'; $env:DITTOHOPPER_SCREENSHOTS = "$env:TEMP/dittohopper-shots"
+try { dotnet test tests/DittoHopper.Grasshopper.Tests -c Debug --filter Category=Screenshots }
+finally { Remove-Item Env:DITTOHOPPER_RHINO_TESTS, Env:DITTOHOPPER_SCREENSHOTS -ErrorAction SilentlyContinue }
+```
+
 ## Fixture pairs
 
 No `.3dm` file is committed. `FixturePair` writes each A/B pair into a temp folder for the run,

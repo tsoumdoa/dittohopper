@@ -1,6 +1,4 @@
-using DittoHopper.Core;
-
-namespace DittoHopper.Grasshopper;
+namespace DittoHopper.Core;
 
 /// <summary>
 /// A Layers input: several layer path patterns, matched with Core's <see cref="LayerGlob"/> (the same rules as Diff

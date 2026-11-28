@@ -1,4 +1,5 @@
 using System.Drawing;
+using DittoHopper.Rhino;
 using DittoHopper.Rhino.Tests;
 using Grasshopper.Kernel;
 using Grasshopper.Kernel.Data;
@@ -26,6 +27,7 @@ public sealed class ComponentTests(RhinoHost host, ITestOutputHelper output)
         ["Diff Preview"] = (new("5b0f7e21-3c4a-4f6e-9a51-2d8c1b7e0a05"), "Review"),
         ["Assert Unchanged"] = (new("5b0f7e21-3c4a-4f6e-9a51-2d8c1b7e0a06"), "Review"),
         ["Stamp IDs"] = (new("5b0f7e21-3c4a-4f6e-9a51-2d8c1b7e0a07"), "Write"),
+        ["Open Review"] = (new("5b0f7e21-3c4a-4f6e-9a51-2d8c1b7e0a08"), "Review"),
     };
 
     [RhinoFact]
@@ -64,7 +66,7 @@ public sealed class ComponentTests(RhinoHost host, ITestOutputHelper output)
     {
         public ResultGoo Result => (ResultGoo)Assert.Single(Gh.Out(Diff, 4));
         public bool Pass(AssertUnchangedComponent gate) => ((GH_Boolean)Assert.Single(Gh.Out(gate, 0))).Value;
-        public Dictionary<DiffPreviewComponent.Status, int> Statuses =>
+        public Dictionary<DiffScene.Status, int> Statuses =>
             Preview.Items.GroupBy(i => i.Status).ToDictionary(g => g.Key, g => g.Count());
     }
 
@@ -137,10 +139,10 @@ public sealed class ComponentTests(RhinoHost host, ITestOutputHelper output)
         Assert.Equal(["1 object on Walls: moved 500 mm in X", "1 object added on Walls"], Gh.Texts(d.Whole, 1));
 
         var statuses = d.Statuses;
-        Assert.Equal(2, statuses[DiffPreviewComponent.Status.Unchanged]);
-        Assert.Equal(1, statuses[DiffPreviewComponent.Status.Added]);
-        Assert.Equal(1, statuses[DiffPreviewComponent.Status.Modified]);
-        Assert.Equal(1, statuses[DiffPreviewComponent.Status.Previous]);
+        Assert.Equal(2, statuses[DiffScene.Status.Unchanged]);
+        Assert.Equal(1, statuses[DiffScene.Status.Added]);
+        Assert.Equal(1, statuses[DiffScene.Status.Modified]);
+        Assert.Equal(1, statuses[DiffScene.Status.Previous]);
         Assert.True(d.Preview.ClippingBox.IsValid);
 
         // A pattern that matches no layer fails the gate instead of passing it.
@@ -201,8 +203,8 @@ public sealed class ComponentTests(RhinoHost host, ITestOutputHelper output)
         Assert.False(d.Pass(d.Gate));
         SetGate(d, "Walls");
         Assert.Equal(["1 object on Walls: moved 100 mm in Z"], Gh.Texts(d.Gate, 1));
-        Assert.Equal(2, d.Statuses[DiffPreviewComponent.Status.Modified]);
-        Assert.Equal(1, d.Statuses[DiffPreviewComponent.Status.Event]); // the slab on the renamed layer
+        Assert.Equal(2, d.Statuses[DiffScene.Status.Modified]);
+        Assert.Equal(1, d.Statuses[DiffScene.Status.Event]); // the slab on the renamed layer
     });
 
     [RhinoFact]
@@ -244,12 +246,12 @@ public sealed class ComponentTests(RhinoHost host, ITestOutputHelper output)
 
         // The preview draws A and B in the document's units, on top of each other.
         double toDoc = MillimetresToDoc();
-        var slab = Assert.Single(d.Preview.Items, i => i.Status == DiffPreviewComponent.Status.Unchanged
+        var slab = Assert.Single(d.Preview.Items, i => i.Status == DiffScene.Status.Unchanged
             && i.Geometry.GetBoundingBox(i.Xform).Max.Y > 7000 * toDoc);
         Assert.Equal(8000 * toDoc, slab.Geometry.GetBoundingBox(slab.Xform).Max.X, 3);
-        var moved = Assert.Single(d.Preview.Items, i => i.Status == DiffPreviewComponent.Status.Modified);
+        var moved = Assert.Single(d.Preview.Items, i => i.Status == DiffScene.Status.Modified);
         Assert.Equal(500 * toDoc, moved.Geometry.GetBoundingBox(moved.Xform).Min.X, 3);
-        var previous = Assert.Single(d.Preview.Items, i => i.Status == DiffPreviewComponent.Status.Previous);
+        var previous = Assert.Single(d.Preview.Items, i => i.Status == DiffScene.Status.Previous);
         Assert.Equal(4000 * toDoc, previous.Geometry.GetBoundingBox(previous.Xform).Max.X, 6);
     }
 
@@ -304,8 +306,8 @@ public sealed class ComponentTests(RhinoHost host, ITestOutputHelper output)
         using var doc = d.Doc;
 
         Assert.Equal("+0 −0 ~0 · 1 event", d.Diff.Message);
-        Assert.Equal(1, d.Statuses[DiffPreviewComponent.Status.Event]);
-        Assert.Equal(1, d.Statuses[DiffPreviewComponent.Status.Unchanged]);
+        Assert.Equal(1, d.Statuses[DiffScene.Status.Event]);
+        Assert.Equal(1, d.Statuses[DiffScene.Status.Unchanged]);
     });
 
     [RhinoFact]
@@ -330,7 +332,7 @@ public sealed class ComponentTests(RhinoHost host, ITestOutputHelper output)
         Assert.False(d.Pass(d.Gate));
         Assert.Contains(Gh.Texts(d.Gate, 1), w => w.EndsWith("pairing needs review", StringComparison.Ordinal));
         // The pairing gets no colour of its own: the box is amber only for its real shape change.
-        Assert.DoesNotContain(d.Preview.Items, i => i.Status == DiffPreviewComponent.Status.Removed || i.Status == DiffPreviewComponent.Status.Added);
+        Assert.DoesNotContain(d.Preview.Items, i => i.Status == DiffScene.Status.Removed || i.Status == DiffScene.Status.Added);
 
         static void Box(File3dm f, double height)
         {
@@ -418,7 +420,7 @@ public sealed class ComponentTests(RhinoHost host, ITestOutputHelper output)
     [RhinoFact]
     public void UnchangedObjectsStandOutFromTheDefaultViewportBackground() => host.Run(() =>
     {
-        var unchanged = DiffPreviewComponent.ColorOf(DiffPreviewComponent.Status.Unchanged);
+        var unchanged = DiffScene.ColorOf(DiffScene.Status.Unchanged);
         var background = global::Rhino.ApplicationSettings.AppearanceSettings.ViewportBackgroundColor;
         output.WriteLine($"viewport background {background}, unchanged {unchanged}");
         Assert.True(Contrast(unchanged, background) >= 3, $"{Contrast(unchanged, background):0.00}:1 on {background}");

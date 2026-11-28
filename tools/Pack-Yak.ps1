@@ -3,8 +3,8 @@
 .SYNOPSIS
 Builds, tests and verifies a local Windows Yak package in artifacts/yak/. Never publishes.
 .DESCRIPTION
-Builds the solution in Release, runs the Rhino-free tests, stages the payload (the .gha, the DLLs it needs,
-LICENSE, README and icon), checks every DittoHopper assembly carries the release version, builds the .yak
+Builds the solution in Release, runs the Rhino-free tests, stages the payload (the .rhp and the .gha, the DLLs
+they share, LICENSE, README and icon), checks every DittoHopper assembly carries the release version, builds the .yak
 with Rhino's Yak and checks its contents. With -Version, first bumps <Version> in Directory.Build.props and
 commits that on a clean working tree.
 .EXAMPLE
@@ -49,7 +49,10 @@ if ($LASTEXITCODE -ne 0) { throw 'Release build failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Release tests failed.' }
 
 $bin = Join-Path $repo 'src/DittoHopper.Grasshopper/bin/Release/net8.0-windows'
+$rhp = Join-Path $repo 'src/DittoHopper.PlugIn/bin/Release/net8.0-windows'
+$shared = 'DittoHopper.Core.dll', 'DittoHopper.Rhino.dll', 'System.IO.Hashing.dll'
 $payload = [ordered]@{
+    'DittoHopper.rhp' = Join-Path $rhp 'DittoHopper.rhp'
     'DittoHopper.Grasshopper.gha' = Join-Path $bin 'DittoHopper.Grasshopper.gha'
     'DittoHopper.Core.dll' = Join-Path $bin 'DittoHopper.Core.dll'
     'DittoHopper.Rhino.dll' = Join-Path $bin 'DittoHopper.Rhino.dll'
@@ -57,6 +60,12 @@ $payload = [ordered]@{
     'LICENSE' = Join-Path $repo 'LICENSE'
     'README.md' = Join-Path $repo 'packaging/README.md'
     'icon.png' = Join-Path $repo 'assets/icon.png'
+}
+# Both plug-ins load the shared DLLs from the one package folder, so both builds must have the same bytes.
+foreach ($name in $shared) {
+    if ((Get-FileHash -LiteralPath (Join-Path $rhp $name)).Hash -cne (Get-FileHash -LiteralPath (Join-Path $bin $name)).Hash) {
+        throw "$name differs between the .rhp and the .gha builds."
+    }
 }
 foreach ($name in $payload.Keys) {
     $source = $payload[$name]
@@ -98,7 +107,9 @@ try {
             if ($entry.FullName -eq 'manifest.yml') {
                 $text = [IO.StreamReader]::new($stream).ReadToEnd()
                 if ($text -cnotmatch '(?m)^name: dittohopper\r?$' -or $text -cnotmatch ('(?m)^version: ' + [regex]::Escape($version) + '\r?$') -or
-                    $text -notmatch 'guid:e59805d1-fcad-4d4f-b916-57b439bf9d91') { throw 'The packaged manifest has the wrong name, version or plug-in GUID.' }
+                    $text -notmatch 'guid:e59805d1-fcad-4d4f-b916-57b439bf9d91' -or $text -notmatch 'guid:a066bd22-92f8-42bf-95ad-9a98373f7e3a') {
+                    throw 'The packaged manifest has the wrong name, version or plug-in GUIDs.'
+                }
                 continue
             }
             $sha = [Security.Cryptography.SHA256]::HashData($stream)

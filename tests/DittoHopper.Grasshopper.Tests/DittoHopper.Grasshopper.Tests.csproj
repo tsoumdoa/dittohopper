@@ -15,6 +15,8 @@
     <!-- Compile against the .gha but keep it out of deps.json (CoreCLR won't start with a .gha listed there).
          It is copied beside the tests below, where RhinoHost's resolver loads it. -->
     <ProjectReference Include="../../src/DittoHopper.Grasshopper/DittoHopper.Grasshopper.csproj" Private="false" />
+    <!-- The Rhino plug-in (.rhp), the same way: compiled against, copied beside the tests, loaded by Rhino. -->
+    <ProjectReference Include="../../src/DittoHopper.PlugIn/DittoHopper.PlugIn.csproj" Private="false" />
     <ProjectReference Include="../../src/DittoHopper.Rhino/DittoHopper.Rhino.csproj" />
     <Compile Include="../DittoHopper.Rhino.Tests/RhinoHost.cs" Link="RhinoHost.cs" />
     <Compile Include="../DittoHopper.Rhino.Tests/FixturePair.cs" Link="FixturePair.cs" />
@@ -22,12 +24,12 @@
     <Compile Include="../DittoHopper.Core.Tests/SnapshotBuilder.cs" Link="SnapshotBuilder.cs" />
     <PackageReference Include="Grasshopper" Version="$(RhinoApiVersion)" ExcludeAssets="runtime" />
     <PackageReference Include="RhinoCommon" Version="$(RhinoApiVersion)" ExcludeAssets="runtime" />
-    <Reference Update="Grasshopper;GH_IO;RhinoCommon"><Private>false</Private></Reference>
+    <Reference Update="Grasshopper;GH_IO;RhinoCommon;Eto;Rhino.UI;Ed.Eto"><Private>false</Private></Reference>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.0.2" PrivateAssets="all" />
   </ItemGroup>
   <Target Name="CopyGha" AfterTargets="Build">
-    <Copy SourceFiles="../../src/DittoHopper.Grasshopper/bin/$(Configuration)/net8.0-windows/DittoHopper.Grasshopper.gha" DestinationFolder="$(OutDir)" />
+    <Copy SourceFiles="../../src/DittoHopper.Grasshopper/bin/$(Configuration)/net8.0-windows/DittoHopper.Grasshopper.gha;../../src/DittoHopper.PlugIn/bin/$(Configuration)/net8.0-windows/DittoHopper.rhp" DestinationFolder="$(OutDir)" />
   </Target>
 </Project>

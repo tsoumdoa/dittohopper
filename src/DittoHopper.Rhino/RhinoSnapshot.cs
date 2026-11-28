@@ -40,6 +40,9 @@ public sealed class RhinoSnapshot : IDisposable
 
     public ModelSnapshot Model { get; }
 
+    /// <summary>The runtime serial number of the document this is a live snapshot of; null for a file.</summary>
+    public uint? DocumentSerialNumber { get; private set; }
+
     /// <summary>Owned copies of the top-level geometry, by object id.</summary>
     internal IReadOnlyDictionary<Guid, Entry> Geometry
     {
@@ -69,7 +72,8 @@ public sealed class RhinoSnapshot : IDisposable
     /// must hold a subset of this snapshot's records. The view shares the geometry and owns none of it: disposing
     /// the view does nothing, and it is unusable once this snapshot is disposed.
     /// </summary>
-    public RhinoSnapshot WithModel(ModelSnapshot model) => new(model, Geometry, Names, definitions, owner ?? this);
+    public RhinoSnapshot WithModel(ModelSnapshot model) =>
+        new(model, Geometry, Names, definitions, owner ?? this) { DocumentSerialNumber = DocumentSerialNumber };
 
     /// <summary>
     /// A block definition's member geometry, in definition space (empty for a linked or unknown definition). Nested
@@ -168,7 +172,9 @@ public sealed class RhinoSnapshot : IDisposable
         }
         if (referenceObjects > 0) src.Skipped.Add($"{referenceObjects} worksession reference objects");
         if (referenceLayers > 0) src.Skipped.Add($"{referenceLayers} worksession reference layers");
-        return SnapshotReader.Read(src);
+        var snapshot = SnapshotReader.Read(src);
+        snapshot.DocumentSerialNumber = doc.RuntimeSerialNumber;
+        return snapshot;
     }
 
     /// <summary>

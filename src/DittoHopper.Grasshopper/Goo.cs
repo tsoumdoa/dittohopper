@@ -90,35 +90,9 @@ public sealed class ResultGoo : GH_Goo<DiffRun>
     public override string ToString() => Value?.ToString() ?? "No result";
 }
 
-/// <summary>Turns snapshot geometry into Grasshopper geometry, and converts between units.</summary>
+/// <summary>Turns snapshot geometry into Grasshopper geometry.</summary>
 internal static class Geometry
 {
-    /// <summary>Multiplies lengths in <paramref name="from"/> into <paramref name="to"/>; 1 when either can't be converted.</summary>
-    public static double Scale(Core.UnitSystem from, Core.UnitSystem to) =>
-        Units.MetersPer(from) is double f && Units.MetersPer(to) is double t ? f / t : 1;
-
-    /// <summary>Multiplies lengths in <paramref name="from"/> into the units of a Rhino document.</summary>
-    public static double Scale(Core.UnitSystem from, global::Rhino.RhinoDoc? doc) =>
-        doc is not null && Units.MetersPer(from) is double f && f > 0
-            ? f / global::Rhino.RhinoMath.UnitScale(doc.ModelUnitSystem, global::Rhino.UnitSystem.Meters)
-            : 1;
-
-    /// <summary>
-    /// The one unit rule for every geometry output and the preview: the Rhino document's units, or A's when there is
-    /// no document. Returns the factors for A's and B's lengths, and a remark naming the units when A, B and the
-    /// document don't all agree.
-    /// </summary>
-    public static (double A, double B, string? Remark) OutputUnits(DiffRun run, global::Rhino.RhinoDoc? doc)
-    {
-        var (ua, ub) = (run.A.Model.Info.Units, run.B.Model.Info.Units);
-        if (doc is null)
-            return (1, run.BToA, ua == ub ? null : $"Geometry is in A's units ({ua}): B ({ub}) is converted.");
-        string units = doc.ModelUnitSystem.ToString();
-        bool same = ua == ub && ua.ToString() == units;
-        return (Scale(ua, doc), Scale(ub, doc),
-            same ? null : $"Geometry is in the Rhino document's units ({units}): A is in {ua}, B in {ub}.");
-    }
-
     /// <summary>
     /// Plain GH geometry, a copy the caller owns, scaled by <paramref name="scale"/> about the origin (a unit
     /// conversion). A block instance becomes its insertion point. Null for types Grasshopper has no geometry for.

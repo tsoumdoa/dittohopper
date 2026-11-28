@@ -1,3 +1,4 @@
+using DittoHopper.Core;
 using DittoHopper.Rhino;
 using Grasshopper.Kernel;
 using Rhino;

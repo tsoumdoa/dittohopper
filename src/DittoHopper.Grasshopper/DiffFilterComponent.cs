@@ -1,4 +1,5 @@
 using DittoHopper.Core;
+using DittoHopper.Rhino;
 using Grasshopper.Kernel;
 
 namespace DittoHopper.Grasshopper;
@@ -75,7 +76,7 @@ public sealed class DiffFilterComponent : DittoComponent
 
         // Only invalid kinds given: nothing matches, rather than everything.
         var rows = kinds.Count == 0 && unknown.Count > 0 ? [] : Select(run, kinds, layers);
-        var units = Geometry.OutputUnits(run, OnPingDocument()?.RhinoDocument ?? global::Rhino.RhinoDoc.ActiveDoc);
+        var units = run.OutputUnits(OnPingDocument()?.RhinoDocument ?? global::Rhino.RhinoDoc.ActiveDoc);
         if (units.Remark is { } remark) AddRuntimeMessage(GH_RuntimeMessageLevel.Remark, remark);
         da.SetDataList(0, rows.Select(r => r.Pair.B is Guid b
             ? Geometry.ToGoo(run.B.GeometryOf(b), units.B)
@@ -121,7 +122,7 @@ public sealed class DiffFilterComponent : DittoComponent
         string layer = (pair.B is Guid lb ? run.LayerOfB(lb) : run.LayerOfA(pair.A!.Value)) ?? "?";
         string text = $"{Describe.Object(record, (pair.B ?? pair.A)!.Value)} · {string.Join("; ", changes)} · {layer}";
         if (pair.A is Guid a && run.MatchOfA(a) is { } m)
-            text += $" · {Describe.Plural(m.UnchangedProperties, "property", "properties")} unchanged · matched by {Describe.Evidence(m)}";
+            text += $" · {Describe.Plural(Review.UnchangedOf(run, pair).Count, "property", "properties")} unchanged · matched by {Describe.Evidence(m)}";
         return text;
     }
 
