@@ -8,7 +8,7 @@ namespace DittoHopper.Rhino;
 /// <summary>
 /// A diff as things to draw in the status colours, both sides converted to the viewport document's units (A's when
 /// there is no document): what Diff Preview and the review panel's viewport draw.
-/// Ownership: items point at the snapshots' (or the live document's) geometry and are drawn through a model transform
+/// Ownership: items point at the snapshots' geometry and are drawn through a model transform
 /// (units, block placement); the only geometry created here is a Brep per extrusion. Nothing is disposed: dropping the
 /// items lets the GC release it.
 /// </summary>
@@ -46,10 +46,9 @@ public static class DiffScene
 
     /// <summary>
     /// Every B object with its status, removed A objects and, with <paramref name="ghost"/>, modified A objects as they
-    /// were. <paramref name="liveB"/>, when given, supplies B's geometry from the open document instead of the snapshot,
-    /// so edits made since the diff show; an object it returns null for (deleted since) is skipped.
+    /// were: the geometry the diff compared, never the live document's, so the drawing matches the statuses.
     /// </summary>
-    public static List<Item> Build(DiffRun run, bool ghost, RhinoDoc? doc, Func<Guid, GeometryBase?>? liveB = null)
+    public static List<Item> Build(DiffRun run, bool ghost, RhinoDoc? doc)
     {
         var units = run.OutputUnits(doc);
         var toDocA = Transform.Scale(Point3d.Origin, units.A);
@@ -65,7 +64,7 @@ public static class DiffScene
                 : modified.Contains(o.Id) ? Status.Modified
                 : events.Contains(o.Id) ? Status.Event
                 : Status.Unchanged;
-            Add(list, run.B, liveB is null ? run.B.GeometryOf(o.Id) : liveB(o.Id), status, toDocB, o.Id, 0);
+            Add(list, run.B, run.B.GeometryOf(o.Id), status, toDocB, o.Id, 0);
         }
         foreach (var id in run.Removed)
             Add(list, run.A, run.A.GeometryOf(id), Status.Removed, toDocA, id, 0);

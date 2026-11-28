@@ -33,5 +33,8 @@
   `DittoHopper.Rhino.dll`.
 - One presentation model for every shell: `Review` in Core (groups, rows, chips, card, unchanged summary, gate);
   `Describe`, `LayerPatterns`, `Vocabulary` and the gate moved from the `.gha` to Core, `DiffRun` and Diff
-  Preview's drawing to `DittoHopper.Rhino`. Diff Filter's "properties unchanged" now counts the properties the
-  object card lists.
+  Preview's drawing to `DittoHopper.Rhino`.
+- v1a review fixes: a review of the open document goes stale when the document changes (banner, gate withdrawn,
+  the reviewed snapshot drawn) until Refresh; a review draws only in its host document and is retired when it
+  closes; table events reach their members (a group rename selects its members) without painting them; command
+  snapshots are disposed with their review; Grasshopper output is unchanged from v0.

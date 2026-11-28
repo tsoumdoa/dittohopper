@@ -20,7 +20,7 @@ public sealed class ReviewPanel : Panel, IPanel
     private readonly ReviewPainter painter = new();
     private readonly List<ReviewPainter.Hit> hits = [];
     private readonly Label sides = Label(ReviewPainter.Dim), sentence = Label(ReviewPainter.Ink), gateResult = Label(ReviewPainter.Dim);
-    private readonly Label status = Label(ReviewPainter.Dim);
+    private readonly Label status = Label(ReviewPainter.Dim), stale = Label(Color.FromArgb(251, 146, 60, 255), ReviewSession.StaleText, bold: true);
     private readonly TextBox scope = new() { PlaceholderText = "I meant to change, e.g. Facade::*" };
     private readonly TextBox gate = new() { PlaceholderText = "Must not change, e.g. Structure::*" };
     private readonly DropDown mode = new();
@@ -73,7 +73,8 @@ public sealed class ReviewPanel : Panel, IPanel
             Rows =
             {
                 new TableRow(new TableCell(Label(ReviewPainter.Ink, "DittoHopper Review", bold: true), true), refresh),
-                new TableRow(new TableCell(sides, true)) ,
+                new TableRow(new TableCell(sides, true)),
+                new TableRow(new TableCell(stale, true)),
                 new TableRow(new TableLayout { Spacing = new Size(6, 0), Rows = { new TableRow(Label(ReviewPainter.Faint, "Scope"), new TableCell(scope, true)) } }),
                 new TableRow(new TableLayout { Spacing = new Size(6, 0), Rows = { new TableRow(Label(ReviewPainter.Faint, "Gate"), new TableCell(gate, true), gateResult) } }),
                 new TableRow(new TableCell(sentence, true)),
@@ -136,8 +137,11 @@ public sealed class ReviewPanel : Panel, IPanel
         sentence.Text = review?.Sentence ?? "";
         if (!scope.HasFocus) scope.Text = Session.Scope;
         if (!gate.HasFocus) gate.Text = Session.Gate;
-        gateResult.Text = review?.Gate is { } g ? (g.Pass ? "✓ passes" : $"✕ {g.Why.Count}") : "";
-        gateResult.TextColor = review?.Gate is { Pass: false } ? Color.FromArgb(252, 165, 165, 255) : Color.FromArgb(134, 239, 172, 255);
+        // A stale review's gate verdict is withdrawn until a Refresh.
+        stale.Visible = review is not null && Session.Stale;
+        gateResult.Text = review?.Gate is not { } g ? "" : Session.Stale ? "stale" : g.Pass ? "✓ passes" : $"✕ {g.Why.Count}";
+        gateResult.TextColor = Session.Stale ? Color.FromArgb(251, 146, 60, 255)
+            : review?.Gate is { Pass: false } ? Color.FromArgb(252, 165, 165, 255) : Color.FromArgb(134, 239, 172, 255);
         gateResult.ToolTip = review?.Gate is { } why ? string.Join(Environment.NewLine, why.Why) : null;
         mode.SelectedIndex = Array.FindIndex(Modes, m => m.Mode == Session.Mode);
         changesPage.Text = $"Changes {Describe.Count(review?.Rows.Count ?? 0)}";
@@ -156,7 +160,15 @@ public sealed class ReviewPanel : Panel, IPanel
     /// <summary>Sizes the drawn parts to their content at the current width, so the list scrolls and the card fits.</summary>
     private void Measure()
     {
-        if (Session.Review is not { } review) return;
+        if (Session.Review is not { } review)
+        {
+            // No review, or its document closed: the empty state.
+            hits.Clear();
+            Fit(rows, 0);
+            Fit(unchanged, 0);
+            Fit(card, 0);
+            return;
+        }
         Fit(rows, painter.Rows(null, review, rows.Width, Session.Selected, Session.Hover, hits));
         Fit(unchanged, painter.Unchanged(null, review, unchanged.Width));
         Fit(card, painter.Card(null, review, Session.SelectedRow, card.Width));
@@ -166,6 +178,16 @@ public sealed class ReviewPanel : Panel, IPanel
     {
         int h = (int)Math.Ceiling(height);
         if (d.Height != h) d.Height = h;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            Session.Changed -= Update;
+            painter.Dispose();
+        }
+        base.Dispose(disposing);
     }
 
     public void PanelShown(uint documentSerialNumber, ShowPanelReason reason)

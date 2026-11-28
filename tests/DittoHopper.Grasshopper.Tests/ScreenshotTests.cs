@@ -25,7 +25,9 @@ public sealed class ScreenshotFactAttribute : FactAttribute
 /// Evidence, not a gate: the mock's revision reviewed in a hidden-window Rhino, the viewport captured with the review
 /// conduit drawing, and what the panel shows written out as text (WPF, and so the Eto panel, doesn't render in this
 /// in-process host). One view capture per run: a second one crashed Rhino natively.
-/// DITTOHOPPER_SCREENSHOT_SELECT names a row to select; DITTOHOPPER_SCREENSHOT_HUD picks the HUD mode.
+/// DITTOHOPPER_SCREENSHOT_SELECT names a row to select; DITTOHOPPER_SCREENSHOT_HUD picks the HUD mode;
+/// DITTOHOPPER_SCREENSHOT_STALE=1 moves a column after the review, and checks that Rhino's own document events (which
+/// headless documents don't raise) made the review stale.
 /// </summary>
 [Collection("Rhino")]
 [Trait("Category", "Screenshots")]
@@ -38,7 +40,8 @@ public sealed class ScreenshotTests(RhinoHost host, ITestOutputHelper output)
         string folder = Directory.CreateDirectory(RhinoHost.ScreenshotFolder!).FullName;
         string select = System.Environment.GetEnvironmentVariable("DITTOHOPPER_SCREENSHOT_SELECT") ?? "";
         var mode = Enum.TryParse<HudMode>(System.Environment.GetEnvironmentVariable("DITTOHOPPER_SCREENSHOT_HUD"), out var m) ? m : HudMode.CardAndTags;
-        string name = $"review-{mode}{(select.Length > 0 ? "-" + select : "")}".ToLowerInvariant();
+        bool stale = System.Environment.GetEnvironmentVariable("DITTOHOPPER_SCREENSHOT_STALE") == "1";
+        string name = $"review-{mode}{(select.Length > 0 ? "-" + select : "")}{(stale ? "-stale" : "")}".ToLowerInvariant();
 
         // A is the saved revision; B is the open document, edited in place.
         var pair = FixturePair.Create("screenshot", Revision, _ => { });
@@ -51,6 +54,13 @@ public sealed class ScreenshotTests(RhinoHost host, ITestOutputHelper output)
         session.SetScope("Facade::*");
         session.SetMode(mode);
         if (select.Length > 0) session.Select(session.Review!.Rows.ToList().FindIndex(r => r.Name == select));
+        if (stale)
+        {
+            Assert.False(session.Stale);
+            var column = doc.Objects.First(o => o.Attributes.GetUserString(Model.TruthKey) == "C-03");
+            doc.Objects.Transform(column, Transform.Translation(0, 900, 0), true);
+            Assert.True(session.Stale, "Moving a column in the open document should make its review stale.");
+        }
         foreach (var row in session.Review!.Rows) output.WriteLine($"[{row.Group}] {row.Name} · {row.Description} · {string.Join(", ", row.Flags)}");
         output.WriteLine(session.Review.Sentence);
 
@@ -77,7 +87,7 @@ public sealed class ScreenshotTests(RhinoHost host, ITestOutputHelper output)
     private static string PanelText(ReviewSession session)
     {
         var r = session.Review!;
-        var lines = new List<string> { r.Header, $"Scope: {session.Scope} · Gate: {session.Gate} " + (r.Gate is { } g ? (g.Pass ? "passes" : $"fails ({g.Why.Count})") : ""), r.Sentence, "" };
+        var lines = new List<string> { r.Header, session.Stale ? "STALE: " + ReviewSession.StaleText : "", $"Scope: {session.Scope} · Gate: {session.Gate} " + (r.Gate is { } g ? (session.Stale ? "stale" : g.Pass ? "passes" : $"fails ({g.Why.Count})") : ""), r.Sentence, "" };
         lines.Add($"== Changes ({r.Rows.Count})");
         foreach (var group in r.Groups)
         {

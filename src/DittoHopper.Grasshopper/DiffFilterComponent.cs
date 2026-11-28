@@ -122,7 +122,7 @@ public sealed class DiffFilterComponent : DittoComponent
         string layer = (pair.B is Guid lb ? run.LayerOfB(lb) : run.LayerOfA(pair.A!.Value)) ?? "?";
         string text = $"{Describe.Object(record, (pair.B ?? pair.A)!.Value)} · {string.Join("; ", changes)} · {layer}";
         if (pair.A is Guid a && run.MatchOfA(a) is { } m)
-            text += $" · {Describe.Plural(Review.UnchangedOf(run, pair).Count, "property", "properties")} unchanged · matched by {Describe.Evidence(m)}";
+            text += $" · {Describe.Plural(m.UnchangedProperties, "property", "properties")} unchanged · matched by {Describe.Evidence(m)}";
         return text;
     }
 

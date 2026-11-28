@@ -14,6 +14,7 @@ namespace DittoHopper.PlugIn;
 /// open document its objects are drawn in their status colour instead of their own (selected objects are left to
 /// Rhino, so selection still shows); for two files, the snapshots' geometry is drawn, in the document's units.</item>
 /// <item>A selected row dims everything else; a hovered row is outlined.</item>
+/// <item>Only in the review's host document: another open document never shows it.</item>
 /// <item>The HUD (<see cref="Hud"/>): card, strip, tags and nudge rings.</item>
 /// </list>
 /// </summary>
@@ -27,19 +28,25 @@ public sealed class ReviewConduit : DisplayConduit
 
     protected override void CalculateBoundingBox(CalculateBoundingBoxEventArgs e)
     {
-        foreach (var item in Session.Scene) e.IncludeBoundingBox(item.Geometry.GetBoundingBox(item.Xform));
+        if (Session.IsHost(e.RhinoDoc) && Session.Extent is { IsValid: true } box) e.IncludeBoundingBox(box);
     }
 
     protected override void PreDrawObject(DrawObjectEventArgs e)
     {
         var o = e.RhinoObject;
-        if (Session.IsDrawnByReview(o.Id) && o.IsSelected(false) == 0 && o.Document?.RuntimeSerialNumber == Session.BDocument?.RuntimeSerialNumber)
+        if (Session.IsDrawnByReview(o.Id) && o.IsSelected(false) == 0 && Session.IsHost(o.Document))
             e.DrawObject = false;
     }
 
-    protected override void PostDrawObjects(DrawEventArgs e) => DrawScene(e.Display);
+    protected override void PostDrawObjects(DrawEventArgs e)
+    {
+        if (Session.IsHost(e.RhinoDoc)) DrawScene(e.Display);
+    }
 
-    protected override void DrawForeground(DrawEventArgs e) => DrawHud(e.Display, e.Viewport);
+    protected override void DrawForeground(DrawEventArgs e)
+    {
+        if (Session.IsHost(e.RhinoDoc)) DrawHud(e.Display, e.Viewport);
+    }
 
     /// <summary>The status-coloured objects: shaded faces first, then wires, then the hovered row's outline on top.</summary>
     public static void DrawScene(DisplayPipeline p)
@@ -75,14 +82,17 @@ public sealed class ReviewConduit : DisplayConduit
         if (Layout(viewport, Hud.MeasureWith(p), p.FrameSize) is { } shapes) Hud.Draw(p, shapes);
     }
 
-    /// <summary>The HUD's shapes for a viewport: tags and rings anchored at the projected centre of each row's objects.</summary>
+    /// <summary>
+    /// The HUD's shapes for a viewport. In Card + tags mode, tags and rings are anchored at the projected centre of each
+    /// row's objects; the other modes need no anchors, so none are computed.
+    /// </summary>
     public static List<HudShape>? Layout(RhinoViewport viewport, Hud.Measure measure, Size size)
     {
         var session = Session;
         if (session.Review is not { } review) return null;
         var selected = session.SelectedRow;
         var anchors = new List<Hud.Anchor>();
-        if (session.Mode != HudMode.Off)
+        if (session.Mode == HudMode.CardAndTags)
         {
             var rows = Hud.Tagged(review, selected).Concat(review.Rows.Where(r => r.Ring)).Distinct();
             foreach (var row in rows)
@@ -99,6 +109,6 @@ public sealed class ReviewConduit : DisplayConduit
                 anchors.Add(new Hud.Anchor(row, at));
             }
         }
-        return Hud.Layout(review, selected, session.Mode, size, measure, anchors);
+        return Hud.Layout(review, selected, session.Mode, size, measure, anchors, session.Stale);
     }
 }

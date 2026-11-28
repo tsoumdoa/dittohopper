@@ -303,12 +303,12 @@ public sealed class Review
 
     /// <summary>
     /// The compared properties that came through unchanged on a matched pair: every property switched on that applies
-    /// to it, less those any of its change sets changed.
+    /// to it, less those any of its change sets changed. (Grasshopper's Diff Filter counts per user-text key instead:
+    /// <see cref="Match.UnchangedProperties"/>.)
     /// </summary>
-    public IReadOnlyList<string> UnchangedOf(ObjectPair pair) => UnchangedOf(Run, pair);
-
-    public static IReadOnlyList<string> UnchangedOf(DiffIndex run, ObjectPair pair)
+    public IReadOnlyList<string> UnchangedOf(ObjectPair pair)
     {
+        var run = Run;
         bool instance = pair.B is Guid b && run.ObjectB(b)?.Kind == ObjectKind.InstanceReference;
         var changed = run.SetsOf(pair).Where(s => s.Kind == ChangeKind.Modified && s.Change is not null).Select(s => s.Change!.Property);
         return Vocabulary.Unchanged(run.Result.Settings.Toggles, instance, changed);

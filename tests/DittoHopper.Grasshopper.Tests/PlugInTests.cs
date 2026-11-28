@@ -106,7 +106,7 @@ public sealed class PlugInTests(RhinoHost host, ITestOutputHelper output)
         Assert.Equal("C-01", nudge.Name);
         Assert.Equal("W-01", Assert.Single(review.Groups[1].Rows).Name);
 
-        // The scene draws the live document: the wall where it is now.
+        // The scene draws the reviewed snapshot: the wall where B had it.
         var wall = session.Scene.Single(i => i.Status == DiffScene.Status.Modified && i.Geometry.GetBoundingBox(i.Xform).Min.X > 400);
         Assert.Equal(500, wall.Geometry.GetBoundingBox(wall.Xform).Min.X, 6);
         Assert.Contains(session.Scene, i => i.Status == DiffScene.Status.Previous);
@@ -132,12 +132,83 @@ public sealed class PlugInTests(RhinoHost host, ITestOutputHelper output)
         session.Move(-1);
         Assert.Equal("C-01", session.SelectedRow!.Name);
 
-        // Refresh reads the document again and keeps the selection by id.
+        // An edit makes the review stale; Refresh reads the document again and keeps the selection by id.
+        Assert.False(session.Stale);
         Move(doc, "wall", -500);
+        Edited(doc);
+        Assert.True(session.Stale);
+        Assert.False(session.IsDrawnByReview(wall.Id)); // the document draws itself again
         session.Refresh();
+        Assert.False(session.Stale);
         Assert.Null(session.Status);
         Assert.Single(session.Review.Rows);
         Assert.Equal("C-01", session.SelectedRow!.Name);
+
+        // Closing the document retires its review.
+        session.DocumentClosed(doc); // what the plug-in's CloseDocument handler does; see Edited
+        doc.Dispose();
+        Assert.Null(session.Run);
+        Assert.Null(session.Review);
+        Assert.False(ReviewConduit.Instance.Enabled);
+        Assert.Equal("The review's document was closed.", session.Status);
+    });
+
+    /// <summary>A stale review never shows a gate as passing: the model it was checked on has changed.</summary>
+    [RhinoFact]
+    public void AnEditMakesTheReviewStaleUntilRefresh() => host.Run(() =>
+    {
+        PlugInLoader.Load();
+        var pair = FixturePair.Create("review-stale", BuildModel, _ => { });
+        var doc = RhinoDoc.OpenHeadless(pair.A);
+        try
+        {
+            var session = ReviewSession.Current;
+            session.SetGate("Structure::*");
+            DittoReviewCommand.Review(new ReviewSource(doc.RuntimeSerialNumber, null, null));
+            Assert.True(session.Review!.Gate!.Pass);
+            Assert.False(session.Stale);
+            static SizeF Measure(string text, int height) => new(text.Length * height * 0.55f, height * 1.3f);
+            List<string> Hud(HudMode mode) => [.. global::DittoHopper.PlugIn.Hud.Layout(session.Review!, null, mode, new Size(1200, 800), Measure, [], session.Stale)
+                .OfType<HudText>().Select(t => t.Text)];
+            Assert.Contains(Hud(HudMode.Card), t => t.EndsWith(": PASS", StringComparison.Ordinal));
+
+            Move(doc, "column", 100); // a gated object moves after the review
+            Edited(doc);
+            Assert.True(session.Stale);
+            foreach (var mode in new[] { HudMode.CardAndTags, HudMode.Card, HudMode.Strip })
+            {
+                var texts = Hud(mode);
+                Assert.DoesNotContain(texts, t => t.Contains("PASS", StringComparison.Ordinal) || t.Contains("passes", StringComparison.Ordinal));
+                Assert.Contains(texts, t => t.Contains("stale", StringComparison.Ordinal));
+                Assert.Contains(ReviewSession.StaleText, string.Join(" ", texts));
+            }
+
+            // Scope and gate re-use the reviewed snapshots, so they don't clear it.
+            session.SetScope("Walls");
+            session.SetGate("Structure::Columns");
+            Assert.True(session.Stale);
+            Assert.True(session.Review.Gate!.Pass); // still the old snapshots: hence withdrawn
+
+            session.Refresh();
+            Assert.False(session.Stale);
+            Assert.False(session.Review.Gate!.Pass);
+            Assert.StartsWith("1 object on Structure::Columns: moved 100 mm in X", session.Review.Gate.Why[0]);
+
+            // Select reports what it could not select.
+            session.Select(session.Review.Rows.ToList().FindIndex(r => r.Name == "C-01"));
+            foreach (var o in doc.Objects.ToList())
+                if (o.Attributes.GetUserString(Model.TruthKey) == "column") doc.Objects.Delete(o, true);
+            Edited(doc);
+            Assert.True(session.Stale);
+            Assert.Equal(0, session.SelectInRhino(session.SelectedRow));
+            Assert.Equal("Selected 0 objects; not selected: 1 locked, hidden or deleted since the review.", session.Status);
+        }
+        finally
+        {
+            ReviewSession.Current.SetGate("");
+            ReviewSession.Current.SetScope("");
+            doc.Dispose();
+        }
     });
 
     [RhinoFact]
@@ -286,6 +357,13 @@ public sealed class PlugInTests(RhinoHost host, ITestOutputHelper output)
         Assert.True(panel.Key(Eto.Forms.Keys.J));
         Assert.False(panel.Key(Eto.Forms.Keys.A));
     });
+
+    /// <summary>
+    /// Tells the review its document changed, as the plug-in's RhinoDoc handlers do. Headless documents (the only kind
+    /// a window-less RhinoCore makes) raise no RhinoDoc events at all, so the tests signal it themselves; the screenshot
+    /// run checks the real events on a windowed document.
+    /// </summary>
+    private static void Edited(RhinoDoc doc) => ReviewSession.Current.ModelChanged(doc);
 
     private static void Move(RhinoDoc doc, string truth, double dx)
     {

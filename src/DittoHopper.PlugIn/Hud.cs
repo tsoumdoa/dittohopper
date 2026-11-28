@@ -65,29 +65,36 @@ public static class Hud
     public static IEnumerable<ReviewRow> Tagged(Review review, ReviewRow? selected) =>
         review.Rows.Where(r => r.Group == ReviewGroupKind.NeedsLook || ReferenceEquals(r, selected));
 
-    public static List<HudShape> Layout(Review review, ReviewRow? selected, HudMode mode, Size view, Measure measure, IReadOnlyList<Anchor> anchors)
+    /// <summary>
+    /// The HUD's shapes. Tags and nudge rings belong to Card + tags. A <paramref name="stale"/> review says so on the card
+    /// and the strip, and its gate shows as stale, never as passing.
+    /// </summary>
+    public static List<HudShape> Layout(Review review, ReviewRow? selected, HudMode mode, Size view, Measure measure, IReadOnlyList<Anchor> anchors,
+        bool stale = false)
     {
         var shapes = new List<HudShape>();
         if (mode == HudMode.Off) return shapes;
-        // Rings first, under everything: a change too small to see.
-        foreach (var a in anchors)
-            if (a.Row.Ring && a.At is PointF p)
-                shapes.Add(new HudBox(new RectangleF(p.X - 18, p.Y - 18, 36, 36), 18, Color.Transparent, DiffScene.Modified, 2));
         if (mode == HudMode.CardAndTags)
         {
+            // Rings first, under everything: a change too small to see.
+            foreach (var a in anchors)
+                if (a.Row.Ring && a.At is PointF p)
+                    shapes.Add(new HudBox(new RectangleF(p.X - 18, p.Y - 18, 36, 36), 18, Color.Transparent, DiffScene.Modified, 2));
             var tagged = Tagged(review, selected).ToHashSet();
             Tags(shapes, [.. anchors.Where(a => tagged.Contains(a.Row))], selected, measure);
         }
-        if (mode is HudMode.CardAndTags or HudMode.Card) Card(shapes, review, selected, measure);
-        else Strip(shapes, review, view, measure);
+        if (mode is HudMode.CardAndTags or HudMode.Card) Card(shapes, review, selected, measure, stale);
+        else Strip(shapes, review, view, measure, stale);
         return shapes;
     }
 
-    private static void Card(List<HudShape> shapes, Review review, ReviewRow? selected, Measure measure)
+    private static void Card(List<HudShape> shapes, Review review, ReviewRow? selected, Measure measure, bool stale)
     {
         var body = new List<HudShape>();
         float x = 12 + Pad, y = 30 + Pad, inner = CardWidth - 2 * Pad;
         foreach (var line in Wrap(review.Header, inner, Small, measure)) y = Line(body, line, x, y, Dim, Small, measure);
+        if (stale)
+            foreach (var line in Wrap(ReviewSession.StaleText, inner, Body, measure)) y = Line(body, line, x, y + 2, Look, Body, measure);
         y += 4;
         foreach (var line in Wrap(review.Sentence, inner, Title, measure)) y = Line(body, line, x, y, Text, Title, measure);
         y += 6;
@@ -99,9 +106,11 @@ public static class Hud
             y += 5;
             // The first reason, without its flags: the card is a glance, the panel has the rest.
             string first = gate.Why.FirstOrDefault()?.Split(" · flagged:")[0] ?? "";
-            string verdict = gate.Pass ? "PASS" : $"FAIL · {first}" + (gate.Why.Count > 1 ? $" (+{gate.Why.Count - 1} more)" : "");
+            // A stale verdict is withdrawn: the model it was checked on has changed.
+            string verdict = stale ? "stale, Refresh to check it again"
+                : gate.Pass ? "PASS" : $"FAIL · {first}" + (gate.Why.Count > 1 ? $" (+{gate.Why.Count - 1} more)" : "");
             foreach (var line in Wrap($"Gate {gate.Layers}: {verdict}", inner, Body, measure))
-                y = Line(body, line, x, y, gate.Pass ? Pass : Fail, Body, measure);
+                y = Line(body, line, x, y, stale ? Look : gate.Pass ? Pass : Fail, Body, measure);
         }
         if (selected is not null)
         {
@@ -112,16 +121,21 @@ public static class Hud
         shapes.AddRange(body);
     }
 
-    private static void Strip(List<HudShape> shapes, Review review, Size view, Measure measure)
+    private static void Strip(List<HudShape> shapes, Review review, Size view, Measure measure, bool stale)
     {
         var body = new List<HudShape>();
         float y = view.Height - 36;
         float end = Chips(body, review.Chips, 0, y, float.MaxValue, measure, wrap: false, out float width);
         if (review.Gate is { } gate)
         {
-            string text = $"Gate {(gate.Pass ? "passes" : "fails")}";
-            body.Add(new HudText(text, new PointF(width + 8, y + 2), gate.Pass ? Pass : Fail, Small));
+            string text = stale ? "Gate stale" : $"Gate {(gate.Pass ? "passes" : "fails")}";
+            body.Add(new HudText(text, new PointF(width + 8, y + 2), stale ? Look : gate.Pass ? Pass : Fail, Small));
             width += 8 + measure(text, Small).Width;
+        }
+        if (stale)
+        {
+            body.Add(new HudText(ReviewSession.StaleText, new PointF(width + 8, y + 2), Look, Small));
+            width += 8 + measure(ReviewSession.StaleText, Small).Width;
         }
         float left = Math.Max(8, (view.Width - width) / 2);
         shapes.Add(new HudBox(new RectangleF(left - 10, y - 5, width + 20, end - y + 10), (end - y + 10) / 2, Panel, Color.Transparent));

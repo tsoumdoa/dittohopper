@@ -47,14 +47,28 @@ public sealed record ReviewSource(uint Document, string? APath, string? BPath)
 /// The one review the panel and the viewport show, per Rhino session: the diff, its <see cref="Core.Review"/>, the
 /// selected and hovered rows and the HUD mode. The panel and the conduit only read it and call its methods; every
 /// change raises <see cref="Changed"/>. Use on Rhino's UI thread.
-/// Snapshots are dropped, not disposed, when a review is replaced: a result from Grasshopper is still Grasshopper's.
+/// <para>
+/// A review belongs to a host document: B's when B is the open document, else the document it was started from. It
+/// draws only there, and it is retired when that document closes. When B is the open document and that document
+/// changes, the review is <see cref="Stale"/> until a Refresh: its statuses and gate no longer describe the model.
+/// </para>
+/// Snapshots the command read are disposed when their review is replaced or retired; a result from Grasshopper is
+/// borrowed, since its snapshots are still Grasshopper's.
 /// </summary>
 public sealed class ReviewSession
 {
     public static ReviewSession Current { get; } = new();
 
+    /// <summary>The panel's and the HUD's words for a stale review.</summary>
+    public const string StaleText = "Model changed since this review — Refresh";
+
     private List<DiffScene.Item>? scene;
+    private Dictionary<Guid, BoundingBox> boxes = [];
+    private BoundingBox extent = BoundingBox.Empty;
     private HashSet<Guid> bIds = [];
+    private uint? host;
+    /// <summary>True when the review read its snapshots itself (the command), so it disposes them.</summary>
+    private bool owned;
 
     public DiffRun? Run { get; private set; }
     public Review? Review { get; private set; }
@@ -69,6 +83,12 @@ public sealed class ReviewSession
     /// <summary>The last error or note, for the panel's status line.</summary>
     public string? Status { get; private set; }
 
+    /// <summary>
+    /// B is the open document and it changed since the review: the statuses and the gate are out of date. Only a
+    /// successful Refresh clears it; changing the scope or the gate re-uses the same snapshots, so it doesn't.
+    /// </summary>
+    public bool Stale { get; private set; }
+
     public event Action? Changed;
 
     public ReviewRow? SelectedRow => Row(Selected);
@@ -78,16 +98,24 @@ public sealed class ReviewSession
     /// <summary>The open document B is, live, or null when B is a file. Selection works only then.</summary>
     public RhinoDoc? BDocument => Run?.BDocument;
 
-    /// <summary>The document the review draws in: B's when B is live, else the active one.</summary>
-    public RhinoDoc? Document => BDocument ?? RhinoDoc.ActiveDoc;
+    /// <summary>The document the review belongs to and draws in, while it is open.</summary>
+    public RhinoDoc? Document => host is uint sn ? RhinoDoc.FromRuntimeSerialNumber(sn) : null;
 
-    /// <summary>Shows a result: replaces the review, keeps the gate and HUD mode, and opens the panel.</summary>
+    public bool IsHost(RhinoDoc? doc) => doc is not null && host == doc.RuntimeSerialNumber;
+
+    /// <summary>
+    /// Shows a result: replaces the review, keeps the gate and HUD mode, and opens the panel. <paramref name="source"/>
+    /// is how the command read it, and the review then owns the snapshots; null for a result from Grasshopper.
+    /// </summary>
     public void Show(DiffRun run, ReviewSource? source)
     {
+        Set(run);
+        owned = source is not null;
         Source = source;
+        host = run.BDocument?.RuntimeSerialNumber ?? source?.Document ?? RhinoDoc.ActiveDoc?.RuntimeSerialNumber;
         Scope = run.Result.Settings.ScopeGlob ?? "";
         Status = null;
-        Set(run);
+        Stale = false;
         Selected = Hover = -1;
         ReviewConduit.Instance.Enabled = true;
         Notify();
@@ -97,15 +125,26 @@ public sealed class ReviewSession
     /// <summary>Opens the panel; set by the plug-in, so a headless session can run without one.</summary>
     public Action? OpenPanel { get; set; }
 
-    /// <summary>Reads A and B again when the review knows where they came from, then diffs them with the current scope.</summary>
+    /// <summary>
+    /// Reads A and B again when the review knows where they came from, then diffs them with the current scope; that
+    /// clears <see cref="Stale"/>. A result from Grasshopper can only be diffed again: recompute it there.
+    /// </summary>
     public void Refresh()
     {
         if (Run is null) return;
+        if (Source is not { } source)
+        {
+            Rediff(Run.A, Run.B);
+            Status = Stale ? "This review came from Grasshopper: recompute the definition to review the model as it is now." : null;
+            Notify();
+            return;
+        }
         try
         {
-            var (a, b) = Source is { } s ? s.Load() : (Run.A, Run.B);
+            var (a, b) = source.Load();
             Rediff(a, b);
             Status = null;
+            Stale = false;
         }
         catch (Exception ex) when (ex is InvalidOperationException or IOException or InvalidDataException or ArgumentException)
         {
@@ -114,7 +153,7 @@ public sealed class ReviewSession
         Notify();
     }
 
-    /// <summary>"I meant to change": a layer pattern, empty for none. Diffs again, since scope flags change sets.</summary>
+    /// <summary>"I meant to change": a layer pattern, empty for none. Diffs the same snapshots again, since scope flags change sets.</summary>
     public void SetScope(string scope)
     {
         scope = scope.Trim();
@@ -166,44 +205,116 @@ public sealed class ReviewSession
         Redraw();
     }
 
-    /// <summary>The things the viewport draws, built on first use after a change. B comes from the live document when it is one.</summary>
+    /// <summary>Ends the review because its document closed. The panel shows its empty state.</summary>
+    public void Retire()
+    {
+        ReviewConduit.Instance.Enabled = false;
+        Release(null);
+        Run = null;
+        Review = null;
+        Source = null;
+        host = null;
+        owned = Stale = false;
+        Selected = Hover = -1;
+        scene = null;
+        boxes = [];
+        extent = BoundingBox.Empty;
+        bIds = [];
+        Status = "The review's document was closed.";
+        Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// An object or a table of <paramref name="doc"/> changed. When that is live B, the review no longer describes the
+    /// model: it is stale until a Refresh.
+    /// </summary>
+    public void ModelChanged(RhinoDoc doc)
+    {
+        if (Stale || !IsBDocument(doc)) return;
+        Stale = true;
+        Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// <paramref name="doc"/>'s properties changed. The drawing follows the host document's units, so its scene is
+    /// rebuilt; when it is live B and its units or tolerance differ from the reviewed ones, the review is stale.
+    /// </summary>
+    public void PropertiesChanged(RhinoDoc doc)
+    {
+        if (!IsHost(doc) || Run is null) return;
+        scene = null;
+        var reviewed = Run.ModelB.Info;
+        if (IsBDocument(doc) && (doc.ModelUnitSystem.ToString() != reviewed.Units.ToString() || doc.ModelAbsoluteTolerance != reviewed.AbsoluteTolerance))
+            ModelChanged(doc);
+    }
+
+    /// <summary>A document closed: the review goes with its host.</summary>
+    public void DocumentClosed(RhinoDoc doc)
+    {
+        if (IsHost(doc)) Retire();
+    }
+
+    private bool IsBDocument(RhinoDoc doc) => BDocument?.RuntimeSerialNumber == doc.RuntimeSerialNumber;
+
+    /// <summary>
+    /// The things the viewport draws, in the host document's units, built on first use after a change: always the
+    /// reviewed snapshots, so the drawing matches the statuses.
+    /// </summary>
     public IReadOnlyList<DiffScene.Item> Scene
     {
         get
         {
             if (scene is null && Run is { } run)
             {
-                var live = BDocument;
-                scene = DiffScene.Build(run, ghost: true, Document, live is null ? null : id => live.Objects.FindId(id)?.Geometry);
+                scene = DiffScene.Build(run, ghost: true, Document);
+                // Each object's extent once per build: the conduit's bounding box and the HUD's anchors use them every frame.
+                boxes = [];
+                extent = BoundingBox.Empty;
+                foreach (var item in scene)
+                {
+                    var box = item.Geometry.GetBoundingBox(item.Xform);
+                    boxes[item.Id] = boxes.TryGetValue(item.Id, out var b) ? BoundingBox.Union(b, box) : box;
+                    extent.Union(box);
+                }
             }
             return scene ?? [];
         }
     }
 
-    /// <summary>True for a document object that is part of live B, which the conduit draws in its status colour instead.</summary>
-    public bool IsDrawnByReview(Guid id) => BDocument is not null && bIds.Contains(id);
+    /// <summary>Everything the scene draws.</summary>
+    public BoundingBox Extent
+    {
+        get
+        {
+            _ = Scene;
+            return extent;
+        }
+    }
+
+    /// <summary>
+    /// True for a document object that is part of live B and that the conduit draws in its status colour instead. Not
+    /// while stale: the document then draws itself as it is, with the reviewed snapshot over it.
+    /// </summary>
+    public bool IsDrawnByReview(Guid id) => !Stale && BDocument is not null && bIds.Contains(id);
 
     /// <summary>The objects of a row, A and B ids both, as the scene's items name them.</summary>
     public static HashSet<Guid> Ids(ReviewRow row) => [.. row.Objects.SelectMany(p => new[] { p.A, p.B }).OfType<Guid>()];
 
-    /// <summary>A row's extent in the viewport document's units, from what the scene draws.</summary>
+    /// <summary>A row's extent in the host document's units, from what the scene draws.</summary>
     public BoundingBox BoxOf(ReviewRow row)
     {
-        var ids = Ids(row);
+        _ = Scene;
         var box = BoundingBox.Empty;
-        foreach (var item in Scene)
-            if (ids.Contains(item.Id)) box.Union(item.Geometry.GetBoundingBox(item.Xform));
+        foreach (var id in Ids(row))
+            if (boxes.TryGetValue(id, out var b)) box.Union(b);
         return box;
     }
 
-    /// <summary>The live document changed: rebuild the scene from it on the next draw.</summary>
-    public void DocumentChanged(RhinoDoc doc)
-    {
-        if (BDocument?.RuntimeSerialNumber != doc.RuntimeSerialNumber) return;
-        scene = null;
-    }
-
-    /// <summary>F: zooms the active view to the row. False when it has nothing to draw.</summary>
+    /// <summary>
+    /// F: zooms the active view to the row. This works for two files too: the review draws their snapshots in the host
+    /// document's view, so zooming to that drawing is useful even though nothing there can be selected. False when the
+    /// row has nothing drawn.
+    /// </summary>
     public bool ZoomTo(ReviewRow? row)
     {
         if (row is null || Document is not { } doc || doc.Views.ActiveView is not { } view) return false;
@@ -228,11 +339,16 @@ public sealed class ReviewSession
             return 0;
         }
         doc.Objects.UnselectAll();
-        int n = doc.Objects.Select(row.Objects.Select(p => p.B).OfType<Guid>().Where(id => doc.Objects.FindId(id) is not null));
-        Status = n == row.Objects.Count ? null : $"Selected {Describe.Plural(n, "object")}; the rest are only in A.";
+        var inB = row.Objects.Select(p => p.B).OfType<Guid>().Distinct().ToList();
+        int onlyInA = row.Objects.Count(p => p.B is null);
+        int selected = doc.Objects.Select(inB.Where(id => doc.Objects.FindId(id) is not null));
+        var missed = new List<string>();
+        if (onlyInA > 0) missed.Add($"{Describe.Count(onlyInA)} only in A");
+        if (inB.Count > selected) missed.Add($"{Describe.Count(inB.Count - selected)} locked, hidden or deleted since the review");
+        Status = missed.Count == 0 ? null : $"Selected {Describe.Plural(selected, "object")}; not selected: {string.Join(", ", missed)}.";
         doc.Views.Redraw();
         Notify();
-        return n;
+        return selected;
     }
 
     private void Rediff(RhinoSnapshot a, RhinoSnapshot b)
@@ -247,10 +363,19 @@ public sealed class ReviewSession
 
     private void Set(DiffRun run)
     {
+        Release(run);
         Run = run;
         Review = Core.Review.Build(run, Gate);
         bIds = [.. run.ModelB.Objects.Select(o => o.Id)];
         scene = null;
+    }
+
+    /// <summary>Disposes the current review's snapshots when it owns them and <paramref name="next"/> doesn't use them.</summary>
+    private void Release(DiffRun? next)
+    {
+        if (!owned || Run is not { } old) return;
+        if (!ReferenceEquals(old.A, next?.A) && !ReferenceEquals(old.A, next?.B)) old.A.Dispose();
+        if (!ReferenceEquals(old.B, next?.A) && !ReferenceEquals(old.B, next?.B)) old.B.Dispose();
     }
 
     private void Notify()

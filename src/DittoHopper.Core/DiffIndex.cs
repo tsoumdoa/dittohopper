@@ -59,14 +59,40 @@ public class DiffIndex
     public IReadOnlySet<Guid> ChangedThroughTables => index.Value.ThroughTables;
 
     /// <summary>
-    /// The objects a table event changed: those it changed through the table entry they use (see
-    /// <see cref="ChangedThroughTables"/>), with their A side when matched, then those whose own change it caused.
+    /// The objects a table event is about, to highlight, zoom to and select: the users of the entry in B, or in A when it
+    /// is gone from B (the objects on a layer, and its sublayers for a rename or reparent; a block's instances; a
+    /// group's members; a material's or linetype's users), each with its other side when matched, then those whose
+    /// own change it caused.
+    /// Membership only: which of them look different is <see cref="ChangedThroughTables"/>, so a group rename, say,
+    /// reaches its members without painting them as changed.
     /// </summary>
     public IReadOnlyList<ObjectPair> ObjectsOf(TableEvent e)
     {
-        var painted = index.Value.ByEvent.GetValueOrDefault(e.Id) ?? [];
+        var ix = index.Value;
+        var inB = new List<Guid>();
+        if (e.B is Guid b) inB.AddRange(Users(e, ModelB, ix.LayersB, b));
+        foreach (var share in e.Shares) inB.AddRange(Users(e, ModelB, ix.LayersB, share.B));
+        // A's users only when the entry is gone from B (a deleted layer or group): otherwise B's are the ones to see.
+        var inA = e.A is Guid a && e.B is null && e.Shares.Count == 0 ? Users(e, ModelA, ix.LayersA, a) : [];
         var caused = Result.ChangeSets.Where(s => s.RootCauseEventId == e.Id).SelectMany(s => s.Objects);
-        return [.. painted.Select(b => new ObjectPair(index.Value.MatchesB.GetValueOrDefault(b)?.A, b)).Concat(caused).Distinct()];
+        return [.. inB.Select(id => new ObjectPair(ix.MatchesB.GetValueOrDefault(id)?.A, id))
+            .Concat(inA.Select(id => new ObjectPair(id, ix.Matches.GetValueOrDefault(id)?.B)))
+            .Concat(caused).Distinct()];
+    }
+
+    private static IEnumerable<Guid> Users(TableEvent e, ModelSnapshot m, IReadOnlyDictionary<Guid, string> paths, Guid id)
+    {
+        bool tree = e.Kind is TableEventKind.Renamed or TableEventKind.Reparented;
+        string? path = paths.GetValueOrDefault(id);
+        return m.Objects.Where(o => e.Table switch
+        {
+            TableKind.Layer => tree ? IsUnder(paths.GetValueOrDefault(o.LayerId), path) : o.LayerId == id,
+            TableKind.Block => o.BlockDefinitionId == id,
+            TableKind.Group => o.GroupIds.Contains(id),
+            TableKind.Material => Uses(m, o, o.Material, l => l.MaterialId, id),
+            TableKind.Linetype => Uses(m, o, o.Linetype, l => l.LinetypeId, id),
+            _ => false,
+        }).Select(o => o.Id);
     }
 
     /// <summary>Multiplies B's lengths into A's units (1 when they agree or can't be converted).</summary>

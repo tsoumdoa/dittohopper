@@ -128,7 +128,7 @@ public class ReviewModelTests
         Assert.Equal([new CardChange("layer", "Grid", "Default")], card.Changed);
         Assert.Equal([Detectors.Describe(Detectors.DefaultLayer), Detectors.Describe(Detectors.OutsideScope)], card.Why);
         Assert.Equal(Compared.Where(p => p != "layer"), card.Unchanged);
-        // The card and Diff Filter's count come from one place.
+        // The card lists the compared properties by name.
         Assert.Equal(card.Unchanged, review.UnchangedOf(grid.Objects[0]));
 
         // A block instance has a block and a placement, not a shape.
@@ -210,6 +210,28 @@ public class ReviewModelTests
         Assert.Matches(@"^fuzzy 0\.\d\d · needs review$", row.Badge);
         Assert.Equal(["Fuzzy match"], row.Flags);
         Assert.Equal(row.Badge, review.Card(row).Badge);
+    }
+
+    [Fact]
+    public void AGroupRenameReachesItsMembersWithoutPaintingThemChanged()
+    {
+        var a = new SnapshotBuilder();
+        var doors = a.Layer("Doors");
+        var set = a.Group("Door set");
+        var members = Enumerable.Range(0, 3).Select(_ => a.Object(doors, o => o with { GroupIds = [set] })).ToList();
+        a.Object(doors);
+        var b = a.Clone();
+        b.Groups[0] = b.Groups[0] with { Name = "Door set 2" };
+        var (ma, mb) = (a.Build(), b.Build());
+        var review = Review.Build(new DiffIndex(ModelDiff.Diff(ma, mb), ma, mb));
+
+        var row = Assert.Single(review.Rows);
+        Assert.Equal(ReviewStatus.Event, row.Status);
+        // Highlight, zoom and select reach the members...
+        Assert.Equal(members.Order(), row.Objects.Select(p => p.B!.Value).Order());
+        Assert.All(row.Objects, p => Assert.Equal(p.A, p.B));
+        // ...but a rename doesn't change how they look.
+        Assert.Empty(review.Run.ChangedThroughTables);
     }
 
     [Fact]

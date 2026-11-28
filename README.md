@@ -45,13 +45,19 @@ did I change this session?". Its options make A another `.3dm` file (`A=File`), 
   Rhino** when B is the open document. `J` and `K` move between rows.
 
 The viewport draws the review: added green, removed red, modified amber, blue where only a table
-entry changed, unchanged slate, and A's previous state as a ghost. When B is the open document,
-its objects are drawn in their status colour (selected ones as Rhino draws them) and follow your
-edits; two files are drawn from their snapshots, in the document's units. Selecting a row dims
-everything else; hovering one outlines its objects. The HUD is display only: a card with the
-summary, counts and gate (or a one-line strip, or nothing: the panel's Viewport setting), tags on
-the rows that need a look and on the selected one, and a ring around a change too small to see.
-Closing the panel stops the drawing.
+entry changed, unchanged slate, and A's previous state as a ghost. It always draws what was
+reviewed: when B is the open document its objects are drawn in their status colour (selected ones
+as Rhino draws them); two files are drawn from their snapshots, in the document's units. Selecting
+a row dims everything else; hovering one outlines its objects. The HUD is display only: a card with
+the summary, counts and gate (or a one-line strip, or nothing: the panel's Viewport setting), and
+in Card + tags mode, tags on the rows that need a look and on the selected one, and a ring around
+a change too small to see.
+
+When B is the open document and you edit it, the review is **stale**: the panel and the HUD say
+"Model changed since this review — Refresh", the gate shows as stale instead of a verdict, and
+the document draws itself again with the reviewed state over it. Changing Scope or Gate re-uses
+the reviewed snapshots, so only Refresh clears it. A review draws only in its own document, and
+closing that document closes the review. Closing the panel stops the drawing.
 
 From Grasshopper, **Open Review** sends a Model Diff result to the same panel.
 
