@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DittoHopper v1 · review panel + viewport HUD (mock)</title>
+<style>
+  :root {
+    --ui: #1e2126; --ui2: #262a30; --ui3: #2f343b; --line: #3a4048; --text: #e6e8eb; --dim: #9aa1ab; --faint: #6b727c;
+    --added: #22c55e; --removed: #ef4444; --modified: #f59e0b; --event: #3b82f6; --unchanged: #374151; --look: #fb923c;
+    --vp1: #a7adb4; --vp2: #8f959d;
+  }
+  html, body { margin: 0; }
+  body { font: 12px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--foreground, #e6e8eb); }
+  * { box-sizing: border-box; }
+  .win { color: var(--text); background: var(--ui); border-radius: 10px; overflow: hidden; border: 1px solid #000; }
+  .titlebar { display: flex; align-items: center; gap: 8px; padding: 7px 12px; background: #17191d; color: var(--dim); font-size: 11px; }
+  .titlebar i { width: 9px; height: 9px; border-radius: 50%; background: #3d434b; display: inline-block; }
+  .body { display: flex; min-height: 640px; }
+  @media (max-width: 1000px) { .body { flex-direction: column; } .panel { width: auto !important; border-left: 0 !important; border-top: 1px solid var(--line); } }
+
+  /* ---------- viewport ---------- */
+  .vp { flex: 1; position: relative; min-width: 0; background: linear-gradient(#b3b8be, #8e949b); min-height: 420px; }
+  .vp svg.model { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .vp .vpname { position: absolute; left: 10px; top: 6px; color: #2b3036; font-size: 11px; font-weight: 600; }
+  .vptools { position: absolute; right: 10px; top: 8px; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .seg { display: flex; background: rgba(23,25,29,.82); border-radius: 6px; padding: 2px; }
+  .seg button { all: unset; cursor: pointer; padding: 3px 8px; border-radius: 4px; color: var(--dim); font-size: 11px; }
+  .seg button.on { background: #3b82f6; color: #fff; }
+  .seg .lab { padding: 3px 6px 3px 8px; color: var(--faint); font-size: 11px; }
+
+  /* HUD: drawn by a DisplayConduit in the real thing, so it is display-only */
+  .hud { position: absolute; left: 12px; top: 30px; width: 300px; background: rgba(20,22,26,.86); border-radius: 8px; padding: 10px 12px 11px; box-shadow: 0 4px 18px rgba(0,0,0,.25); pointer-events: none; }
+  .hud .files { display: flex; align-items: center; gap: 6px; color: var(--dim); font-size: 10.5px; }
+  .hud .files svg { flex: none; }
+  .hud .sentence { font-size: 13px; font-weight: 600; margin: 6px 0 8px; line-height: 1.35; }
+  .hud .sentence code { font: inherit; color: #fcd34d; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px 5px; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 999px; background: #2a2f36; font-size: 10.5px; color: var(--text); white-space: nowrap; }
+  .chip b { font-weight: 700; }
+  .chip.look { background: rgba(251,146,60,.18); color: #fdba74; }
+  .chip .d { width: 7px; height: 7px; border-radius: 2px; display: inline-block; }
+  .hud .gate { display: flex; justify-content: space-between; align-items: center; margin-top: 9px; padding-top: 8px; border-top: 1px solid #333941; font-size: 11px; }
+  .fail { color: #fca5a5; font-weight: 700; }
+  .pass { color: #86efac; font-weight: 700; }
+  .bar { height: 4px; border-radius: 2px; background: #333941; margin-top: 7px; overflow: hidden; }
+  .bar > div { height: 100%; background: var(--added); transition: width .2s; }
+  .hud .prog { display: flex; justify-content: space-between; color: var(--dim); font-size: 10.5px; margin-top: 4px; }
+  .strip { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); background: rgba(20,22,26,.86); border-radius: 999px; padding: 5px 12px; display: flex; gap: 10px; align-items: center; font-size: 11px; white-space: nowrap; pointer-events: none; }
+  .legend { position: absolute; left: 12px; bottom: 10px; display: flex; gap: 10px; font-size: 10.5px; color: #1f2328; font-weight: 600; pointer-events: none; }
+  .legend span::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; background: var(--c); }
+  .note { position: absolute; right: 10px; bottom: 10px; color: #23282e; font-size: 10px; max-width: 260px; text-align: right; }
+
+  /* ---------- panel ---------- */
+  .panel { width: 390px; border-left: 1px solid var(--line); display: flex; flex-direction: column; background: var(--ui); }
+  .ph { padding: 10px 12px 8px; border-bottom: 1px solid var(--line); }
+  .ph .t { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 12.5px; }
+  .ph .t .icons { color: var(--faint); font-weight: 400; display: flex; gap: 8px; }
+  .cmp { display: grid; grid-template-columns: 1fr auto 1fr; gap: 6px; align-items: center; margin-top: 8px; }
+  .field { background: var(--ui2); border: 1px solid var(--line); border-radius: 5px; padding: 4px 7px; font-size: 11px; display: flex; justify-content: space-between; color: var(--text); }
+  .field small { color: var(--faint); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
+  .field .k { color: var(--faint); margin-right: 6px; }
+  .field code { font: 11px ui-monospace, Consolas, monospace; }
+  .sum { margin-top: 9px; font-size: 12px; line-height: 1.4; }
+  .sum code { font: inherit; color: #fcd34d; }
+  .tabs { display: flex; gap: 2px; padding: 6px 10px 0; border-bottom: 1px solid var(--line); }
+  .tabs button { all: unset; cursor: pointer; padding: 5px 9px 6px; color: var(--dim); border-bottom: 2px solid transparent; font-size: 11.5px; }
+  .tabs button.on { color: var(--text); border-bottom-color: #3b82f6; }
+  .tabs button em { font-style: normal; color: var(--faint); margin-left: 3px; }
+  .list { flex: 1; overflow: auto; padding: 4px 0 8px; min-height: 200px; }
+  .grp { padding: 9px 12px 4px; color: var(--faint); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; display: flex; justify-content: space-between; }
+  .item { display: grid; grid-template-columns: 14px 1fr auto; gap: 8px; padding: 6px 12px 7px; cursor: pointer; border-left: 2px solid transparent; }
+  .item:hover { background: #24282e; }
+  .item.sel { background: #252c38; border-left-color: #3b82f6; }
+  .item .dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 4px; }
+  .item .nm { font-weight: 600; }
+  .item .ds { color: var(--dim); }
+  .item.done .nm, .item.done .ds { opacity: .45; }
+  .flags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 3px; }
+  .flag { font-size: 10px; padding: 0 6px; border-radius: 3px; background: rgba(251,146,60,.16); color: #fdba74; }
+  .flag.idea { background: rgba(59,130,246,.16); color: #93c5fd; }
+  .badge { font: 9.5px ui-monospace, Consolas, monospace; color: var(--dim); background: var(--ui3); padding: 0 5px; border-radius: 3px; }
+  .tick { width: 15px; height: 15px; border-radius: 4px; border: 1.5px solid #4b525c; margin-top: 2px; display: grid; place-items: center; color: transparent; font-size: 10px; }
+  .item.done .tick { background: var(--added); border-color: var(--added); color: #06240f; }
+  .card { border-top: 1px solid var(--line); padding: 10px 12px; background: #1a1d21; }
+  .card .hd { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+  .st { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 3px; color: #111; }
+  .card h4 { margin: 0; font-size: 13px; }
+  .card .meta { color: var(--faint); font-size: 10.5px; margin: 3px 0 7px; }
+  .kv { display: grid; grid-template-columns: 84px 1fr; gap: 3px 8px; font-size: 11px; }
+  .kv .k { color: var(--dim); }
+  .kv code { font: 10.5px ui-monospace, Consolas, monospace; }
+  .from { color: #f87171; text-decoration: line-through; opacity: .8; }
+  .to { color: #fcd34d; }
+  .why { color: #fdba74; font-size: 10.5px; margin-top: 4px; }
+  .sec { color: var(--faint); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; margin: 9px 0 4px; }
+  .same { display: flex; flex-wrap: wrap; gap: 4px; }
+  .same span { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: #232830; color: var(--dim); }
+  .same span::before { content: "✓ "; color: #4ade80; }
+  .acts { display: flex; gap: 5px; margin-top: 10px; flex-wrap: wrap; }
+  .btn { all: unset; cursor: pointer; padding: 4px 9px; border-radius: 5px; background: var(--ui3); font-size: 11px; }
+  .btn.pri { background: #2563eb; color: #fff; }
+  .btn.warn { color: #fca5a5; }
+  .foot { display: flex; justify-content: space-between; align-items: center; padding: 7px 12px; border-top: 1px solid var(--line); color: var(--dim); font-size: 10.5px; gap: 8px; }
+  kbd { font: 9.5px ui-monospace, Consolas, monospace; background: var(--ui3); border: 1px solid #454c55; border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; color: var(--text); }
+  table.mx { border-collapse: collapse; width: 100%; font-size: 11px; }
+  .mx th { color: var(--faint); font-weight: 600; font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em; padding: 6px 4px; text-align: center; }
+  .mx th:first-child, .mx td:first-child { text-align: left; padding-left: 12px; }
+  .mx td { padding: 6px 4px; text-align: center; border-top: 1px solid #2a2f35; }
+  .mx td.c { cursor: pointer; border-radius: 3px; }
+  .mx td.c:hover { background: #2b3139; }
+  .mx .z { color: #4b525c; }
+  .mx .w { color: #fdba74; font-weight: 700; }
+  .mx .s { font-size: 10px; white-space: nowrap; padding-right: 10px; }
+  .hint { color: var(--faint); font-size: 10.5px; padding: 8px 12px; }
+  @keyframes pulse { 0% { opacity: .95; } 50% { opacity: .35; } 100% { opacity: .95; } }
+  .pulse { animation: pulse 1.4s ease-in-out infinite; }
+  .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 12px; }
+  .notes div { padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border, #3a4048); font-size: 12px; line-height: 1.5; }
+  .notes code { font: 11px ui-monospace, Consolas, monospace; }
+</style>
+</head>
+<body>
+<div class="win" tabindex="0" id="win">
+  <div class="titlebar"><i></i><i></i><i></i><span style="margin-left:6px">B.3dm (current document) · Rhino 8</span></div>
+  <div class="body">
+    <div class="vp" id="vp">
+      <svg class="model" id="model" preserveAspectRatio="xMidYMid meet"></svg>
+      <div class="vpname">Perspective</div>
+      <div class="vptools">
+        <div class="seg" id="hudSeg"><span class="lab">HUD</span><button data-v="card">Card</button><button data-v="tags" class="on">Card + tags</button><button data-v="strip">Strip</button><button data-v="off">Off</button></div>
+        <div class="seg" id="showSeg"><button data-v="all" class="on">Overlay</button><button data-v="changes">Changes only</button></div>
+        <div class="seg" id="ghostSeg"><button data-v="on" class="on">Ghost A</button></div>
+      </div>
+      <div id="hud"></div>
+      <div class="legend" id="legend">
+        <span style="--c:var(--modified)">modified</span><span style="--c:var(--added)">added</span><span style="--c:var(--removed)">removed</span><span style="--c:var(--event)">layer-driven</span><span style="--c:var(--unchanged)">unchanged</span>
+      </div>
+    </div>
+
+    <div class="panel" id="panel" style="width:390px">
+      <div class="ph">
+        <div class="t"><span>DittoHopper Review</span><span class="icons" title="Refresh · Settings">⟳ ⋯</span></div>
+        <div class="cmp">
+          <div class="field"><span><span class="k">A</span>A.3dm</span><small>rev B · 27 Nov</small></div>
+          <span style="color:var(--faint)">→</span>
+          <div class="field"><span><span class="k">B</span>Current doc</span><small>live</small></div>
+        </div>
+        <div class="row2">
+          <div class="field"><span><span class="k">Scope</span><code>Facade::*</code></span></div>
+          <div class="field"><span><span class="k">Gate</span><code>Structure::*</code></span><span class="fail">✕ 1</span></div>
+        </div>
+        <div class="sum">Outside <code>Facade::*</code>, <b>2 objects changed in 2 sets</b>. 3 layers are untouched. 37 of 42 objects are identical.</div>
+      </div>
+      <div class="tabs" id="tabs"><button data-t="changes" class="on">Changes<em>7</em></button><button data-t="layers">Layers<em>5</em></button><button data-t="unchanged">Unchanged<em>37</em></button></div>
+      <div class="list" id="list"></div>
+      <div class="card" id="card"></div>
+      <div class="foot"><span id="progTxt">0 / 7 reviewed</span><span><kbd>J</kbd><kbd>K</kbd> <kbd>Space</kbd> <kbd>F</kbd></span><button class="btn" id="signoff" style="opacity:.5">Sign off</button></div>
+    </div>
+  </div>
+</div>
+<div class="notes">
+  <div><b>Viewport HUD</b> is a Rhino <code>DisplayConduit</code> drawing in 2D over the view. It's display-only: you can't click it, so every action lives in the panel. Its tags follow the objects as you orbit, and a change too small to see (the 0.04 mm nudge) gets a ring.</div>
+  <div><b>Review panel</b> is a dockable Eto panel. It opens from a Rhino command (<code>DittoReview</code>: this doc vs its last save, or vs a file) and from GH via Open Review. You don't need GH to review. Hovering a row highlights its objects; selecting one dims the rest.</div>
+  <div><b>Review state</b> (ticks, “intended”, sign-off) is saved with the result, so a team can sign off rev B → current. The <i>idea</i> chip is a proposal: the engine doesn't detect splits today.</div>
+</div>
+<script>
+// ---------- model: the demo revision (42 objects in A) ----------
+const S = { unchanged: '#374151', event: '#3b82f6', modified: '#f59e0b', added: '#22c55e', removed: '#ef4444' };
+const objs = [];
+const box = (id, b, status, extra = {}) => objs.push({ id, b, status, kind: 'box', ...extra });
+box('Slab L1', [-400, -400, -250, 24400, 12400, 0], 'unchanged', { layer: 'Structure::Slabs' });
+let n = 0;
+for (let j = 0; j < 3; j++) for (let i = 0; i < 5; i++) {
+  n++; const x = i * 6000, y = j * 6000, id = `C-${String(n).padStart(2, '0')}`;
+  box(id, [x - 200, y - 200, 0, x + 200, y + 200, 3500], id === 'C-08' ? 'modified' : 'unchanged', { layer: 'Structure::Columns' });
+}
+for (let k = 0; k < 8; k++) {
+  const s = `FP-S${String(k + 1).padStart(2, '0')}`, nn = `FP-N${String(k + 1).padStart(2, '0')}`;
+  if (s === 'FP-S04') box(s, [k * 3000, -450, 0, k * 3000 + 3000, -250, 3500], 'modified', { ghost: [k * 3000, -300, 0, k * 3000 + 3000, -100, 3500] });
+  else if (s === 'FP-S07') box(s, [k * 3000, -300, 0, k * 3000 + 3000, -100, 4200], 'modified', { ghost: [k * 3000, -300, 0, k * 3000 + 3000, -100, 3500] });
+  else box(s, [k * 3000, -300, 0, k * 3000 + 3000, -100, 3500], 'event');
+  if (nn === 'FP-N06') {
+    box('FP-N06', [15000, 12100, 0, 18000, 12300, 3500], 'removed');
+    box('FP-N06a', [15000, 12100, 0, 16500, 12300, 3500], 'added');
+    box('FP-N06b', [16500, 12100, 0, 18000, 12300, 3500], 'added');
+  } else box(nn, [k * 3000, 12100, 0, k * 3000 + 3000, 12300, 3500], 'event');
+}
+for (let i = 0; i < 5; i++) {
+  const L = 'ABCDE'[i];
+  objs.push({ id: `Grid-${L}`, kind: 'line', x: i * 6000, status: L === 'C' ? 'modified' : 'unchanged', label: L });
+}
+
+// ---------- change sets, as Model Diff reports them ----------
+const rows = [
+  { grp: 'Needs a look', id: 'grid', name: 'Grid-C', kind: 'modified', desc: 'Layer Grid → Default', flags: ['Moved to Default', 'Outside scope'], objs: ['Grid-C'], match: 'key · certain',
+    changed: [['Layer', 'Grid', 'Default']], why: 'Dropped on Default: usually a paste or a lost layer.', same: ['Geometry', 'Colour', 'Material', 'Linetype', 'Name', 'User text', 'Visibility'], tag: 'Grid-C → Default' },
+  { grp: 'Needs a look', id: 'nudge', name: 'C-08', kind: 'modified', desc: 'Moved 0.04 mm in X', flags: ['Tiny nudge', 'Outside scope'], objs: ['C-08'], match: 'key · certain',
+    changed: [['Position X', '12000.00', '12000.04']], why: '0.04 mm is under 10 × tolerance: a gumball or arrow-key slip? Too small to see, so it is ringed.', same: ['Shape', 'Layer', 'Colour', 'Material', 'Name', 'User text', 'Linetype'], tag: 'C-08 · 0.04 mm X · nudge?' },
+  { grp: 'Table events', id: 'color', name: 'Facade::Panels', kind: 'event', desc: 'Layer colour black → steel blue · 17 ByLayer objects look different', flags: [], objs: objs.filter(o => o.status === 'event' || /^FP-N06[ab]$/.test(o.id)).map(o => o.id), match: 'layer id',
+    changed: [['Layer colour', '#000000', '#4682B4']], why: 'Their own settings did not change: colour is ByLayer.', same: [] },
+  { grp: 'In scope · Facade::*', id: 's04', name: 'FP-S04', kind: 'modified', desc: 'Moved 150 mm in −Y', flags: [], objs: ['FP-S04'], match: 'key · certain',
+    changed: [['Position Y', '−300.00', '−450.00']], same: ['Shape', 'Layer', 'Colour', 'Material', 'Name', 'User text', 'Linetype'], tag: '150 mm −Y' },
+  { grp: 'In scope · Facade::*', id: 's07', name: 'FP-S07', kind: 'modified', desc: 'Shape: top raised 700 mm · 12 of 24 control points', flags: [], objs: ['FP-S07'], match: 'key · certain',
+    changed: [['Height', '3500', '4200']], same: ['Footprint', 'Layer', 'Colour', 'Material', 'Name', 'User text', 'Linetype'], tag: '+700 mm' },
+  { grp: 'In scope · Facade::*', id: 'n06', name: 'FP-N06', kind: 'removed', desc: 'Removed from Facade::Panels', flags: [], objs: ['FP-N06'], match: '—',
+    changed: [['Object', 'FP-N06 · 3000 × 200 × 3500', '—']], same: [] },
+  { grp: 'In scope · Facade::*', id: 'n06ab', name: 'FP-N06a, FP-N06b', kind: 'added', desc: '2 added on Facade::Panels', flags: ['idea: same footprint as FP-N06, a split?'], objs: ['FP-N06a', 'FP-N06b'], match: '—',
+    changed: [['Objects', '—', '2 panels · 1500 × 200 × 3500']], same: [] },
+];
+const layers = [
+  { name: 'Structure::Columns', cells: { Placement: [1, 'nudge', true] }, status: ['1 to check', 'w'] },
+  { name: 'Structure::Slabs', cells: {}, status: ['untouched', 'z'] },
+  { name: 'Facade::Panels', cells: { Placement: [1, 's04'], Shape: [1, 's07'], Added: [2, 'n06ab'], Removed: [1, 'n06'], Event: ['col', 'color'] }, status: ['expected', ''] },
+  { name: 'Grid', cells: { Layer: ['1 out', 'grid', true] }, status: ['1 to check', 'w'] },
+  { name: 'Default', cells: { Layer: ['1 in', 'grid', true] }, status: ['1 to check', 'w'] },
+];
+
+const state = { sel: 0, done: new Set(), hud: 'tags', show: 'all', ghost: true, tab: 'changes', hover: null };
+
+// ---------- projection ----------
+const P = (x, y, z) => [x * 0.8 + y * 0.42, -(y * 0.55 + z * 0.8)];
+const pts = a => a.map(p => P(...p).map(v => v.toFixed(0)).join(',')).join(' ');
+const faces = ([x0, y0, z0, x1, y1, z1]) => [
+  [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]],
+  [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]],
+  [[x0, y0, z0], [x0, y1, z0], [x0, y1, z1], [x0, y0, z1]],
+];
+const center = ([x0, y0, z0, x1, y1, z1]) => [(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2];
+
+function render() {
+  const svg = document.getElementById('model');
+  const vb = [-4200, -17200, 34000, 22500];
+  svg.setAttribute('viewBox', vb.join(' '));
+  const row = rows[state.sel];
+  const focus = new Set([...(row ? row.objs : []), ...(state.hover != null ? rows[state.hover].objs : [])]);
+  const focusing = row && row.kind !== 'event';
+  let g = '';
+  const visible = o => state.show === 'all' || !(o.status === 'unchanged' || o.status === 'event');
+  const order = objs.filter(o => o.kind === 'box').sort((a, b) => {
+    if (a.id === 'Slab L1') return -1; if (b.id === 'Slab L1') return 1;
+    const ca = center(a.b), cb = center(b.b); return (cb[1] + cb[0] * 0.25) - (ca[1] + ca[0] * 0.25);
+  });
+  const op = o => focusing && !focus.has(o.id) ? 0.32 : 1;
+  // slab first, then grid lines on it, then the rest back to front
+  const drawBox = o => {
+    if (!visible(o)) return;
+    const c = S[o.status], hl = focus.has(o.id);
+    const fill = o.status === 'unchanged' ? 0.06 : o.status === 'event' ? 0.1 : o.status === 'removed' ? 0.12 : 0.42;
+    const dash = o.status === 'removed' ? 'stroke-dasharray="120 90"' : '';
+    const w = hl ? 70 : o.status === 'unchanged' ? 28 : 40;
+    g += `<g opacity="${op(o)}" data-id="${o.id}">`;
+    for (const f of faces(o.b)) g += `<polygon points="${pts(f)}" fill="${c}" fill-opacity="${fill}" stroke="${c}" stroke-width="${w}" stroke-linejoin="round" ${dash}/>`;
+    if (hl) for (const f of faces(o.b)) g += `<polygon points="${pts(f)}" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="16"/>`;
+    g += '</g>';
+    if (o.ghost && state.ghost) for (const f of faces(o.ghost)) g += `<polygon opacity="${op(o)}" points="${pts(f)}" fill="none" stroke="${S.modified}" stroke-width="26" stroke-dasharray="110 80"/>`;
+  };
+  drawBox(order[0]);
+  for (const o of objs.filter(o => o.kind === 'line')) {
+    if (!visible(o)) continue;
+    const [a, b] = [P(o.x, -600, 0), P(o.x, 12600, 0)], [lx, ly] = P(o.x, 13300, 0);
+    const mod = o.status === 'modified';
+    g += `<g opacity="${op(o)}"><line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="${mod ? S.modified : '#2b3038'}" stroke-width="${mod ? 70 : 22}" ${mod ? '' : 'stroke-dasharray="400 160 60 160"'}/>
+      <rect x="${lx - 230}" y="${ly - 230}" width="460" height="460" rx="120" fill="#2b3038"/><text x="${lx}" y="${ly + 120}" text-anchor="middle" font-size="330" fill="#fff" font-weight="700">${o.label}</text></g>`;
+  }
+  for (const o of order.slice(1)) drawBox(o);
+
+  // the 0.04 mm nudge is invisible: ring it
+  const nudge = objs.find(o => o.id === 'C-08'), [nx, ny] = P(...center(nudge.b));
+  if (visible(nudge)) g += `<circle class="pulse" cx="${nx}" cy="${ny}" r="1150" fill="none" stroke="${S.modified}" stroke-width="55" stroke-dasharray="160 110" opacity="${op(nudge)}"/>`;
+
+  // tags: leader labels on what needs a look and on the selected row
+  if (state.hud === 'tags') {
+    const tagged = rows.filter((r, i) => r.tag && (r.grp === 'Needs a look' || i === state.sel));
+    const anchor = { 'Grid-C': [12000, 2500, 0], 'C-08': [12000, 6000, 3500], 'FP-S04': [10500, -450, 3500], 'FP-S07': [19500, -300, 4200] };
+    const offset = { 'Grid-C': [-6000, 2600], 'C-08': [3000, -5200], 'FP-S04': [-5200, -3400], 'FP-S07': [1800, -3000] };
+    for (const r of tagged) {
+      const id = r.objs[0], [ax, ay] = P(...anchor[id]), [dx, dy] = offset[id], tx = ax + dx, ty = ay + dy;
+      const look = r.grp === 'Needs a look', w = r.tag.length * 205 + 520, sel = rows[state.sel] === r;
+      g += `<g><line x1="${ax}" y1="${ay}" x2="${tx}" y2="${ty}" stroke="#14161a" stroke-width="30"/><circle cx="${ax}" cy="${ay}" r="90" fill="#14161a"/>
+        <rect x="${tx - (dx < 0 ? w : 0)}" y="${ty - 300}" width="${w}" height="600" rx="300" fill="${sel ? '#2563eb' : 'rgba(20,22,26,.9)'}" ${look && !sel ? `stroke="${S.modified}" stroke-width="40"` : ''}/>
+        <text x="${tx - (dx < 0 ? w : 0) + 260}" y="${ty + 115}" font-size="330" fill="#fff">${look ? '⚑ ' : ''}${r.tag}</text></g>`;
+    }
+  }
+  svg.innerHTML = g;
+  renderHud();
+}
+
+function renderHud() {
+  const hud = document.getElementById('hud');
+  const done = state.done.size, total = rows.length;
+  const chips = `<div class="chips">
+    <span class="chip look">⚑ <b>2</b> need a look</span>
+    <span class="chip"><i class="d" style="background:${S.modified}"></i><b>4</b> modified</span>
+    <span class="chip"><i class="d" style="background:${S.added}"></i><b>2</b> added</span>
+    <span class="chip"><i class="d" style="background:${S.removed}"></i><b>1</b> removed</span>
+    <span class="chip"><i class="d" style="background:${S.event}"></i><b>1</b> layer event</span>
+    <span class="chip"><i class="d" style="background:#6b7280"></i><b>37</b> unchanged</span></div>`;
+  const logo = `<svg width="14" height="14" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#262a30"/><g stroke-width="10" stroke-linecap="round"><line x1="40.5" y1="27" x2="34.5" y2="47" stroke="#9ca3af" stroke-opacity=".4"/><line x1="24.5" y1="27" x2="18.5" y2="47" stroke="#fff"/><line x1="45.5" y1="17" x2="39.5" y2="37" stroke="#f59e0b"/></g></svg>`;
+  if (state.hud === 'card' || state.hud === 'tags') {
+    hud.innerHTML = `<div class="hud">
+      <div class="files">${logo}<span>A.3dm (rev B) → current doc · mm · tol 0.01</span></div>
+      <div class="sentence">Outside <code>Facade::*</code>, 2 objects changed in 2 sets.</div>${chips}
+      <div class="gate"><span>Gate <code>Structure::*</code></span><span class="fail">✕ FAIL · C-08 moved 0.04 mm</span></div>
+      <div class="bar"><div style="width:${100 * done / total}%"></div></div>
+      <div class="prog"><span>${done} / ${total} reviewed</span><span>${rows[state.sel] ? 'Showing: ' + rows[state.sel].name : ''}</span></div></div>`;
+  } else if (state.hud === 'strip') {
+    hud.innerHTML = `<div class="strip">${logo}<span class="chip look">⚑ 2 need a look</span><span style="color:${S.modified}">~4</span><span style="color:${S.added}">+2</span><span style="color:${S.removed}">−1</span><span style="color:#93c5fd">1 event</span><span style="color:var(--dim)">37 same</span><span class="fail">Structure::* ✕</span><span style="color:var(--dim)">${done}/${total}</span></div>`;
+  } else hud.innerHTML = '';
+  document.getElementById('legend').style.display = state.hud === 'strip' ? 'none' : 'flex';
+}
+
+function renderList() {
+  const list = document.getElementById('list');
+  if (state.tab === 'changes') {
+    let h = '', last = '';
+    rows.forEach((r, i) => {
+      if (r.grp !== last) {
+        const cnt = rows.filter(x => x.grp === r.grp).length;
+        h += `<div class="grp"><span>${r.grp}</span><span>${cnt}</span></div>`; last = r.grp;
+      }
+      const flags = r.flags.map(f => `<span class="flag${f.startsWith('idea') ? ' idea' : ''}">${f}</span>`).join('');
+      h += `<div class="item${i === state.sel ? ' sel' : ''}${state.done.has(i) ? ' done' : ''}" data-i="${i}">
+        <i class="dot" style="background:${S[r.kind]}"></i>
+        <div><div class="nm">${r.name} <span class="badge">${r.match}</span></div><div class="ds">${r.desc}</div>${flags ? `<div class="flags">${flags}</div>` : ''}</div>
+        <div class="tick" data-tick="${i}">✓</div></div>`;
+    });
+    list.innerHTML = h;
+  } else if (state.tab === 'layers') {
+    const cols = ['Placement', 'Shape', 'Layer', 'Added', 'Removed', 'Event'];
+    let h = `<div class="hint">One row per layer in A. Click a count to open its change set.</div><table class="mx"><tr><th>Layer</th>${cols.map(c => `<th>${c}</th>`).join('')}<th>Status</th></tr>`;
+    for (const l of layers) {
+      h += `<tr><td>${l.name}</td>` + cols.map(c => {
+        const v = l.cells[c];
+        if (!v) return '<td class="z">·</td>';
+        const i = rows.findIndex(r => r.id === v[1]);
+        return `<td class="c${v[2] ? ' w' : ''}" data-i="${i}">${v[0] === 'col' ? '<span style="color:#93c5fd">colour</span>' : v[0]}</td>`;
+      }).join('') + `<td class="s ${l.status[1]}">${l.status[0]}</td></tr>`;
+    }
+    list.innerHTML = h + '</table>';
+  } else {
+    list.innerHTML = `<div class="hint">What did <b>not</b> change, so you can trust the silence. 37 objects identical in geometry and all tracked properties; 15 more differ only through their layer.</div>
+      <div class="grp"><span>Structure::Columns</span><span>14 of 15</span></div><div class="hint" style="padding-top:0">C-01 … C-15 except C-08 · placement, shape, layer, colour, material, name, user text</div>
+      <div class="grp"><span>Structure::Slabs</span><span>1 of 1</span></div><div class="hint" style="padding-top:0">Slab L1 · every property</div>
+      <div class="grp"><span>Grid</span><span>4 of 5</span></div><div class="hint" style="padding-top:0">Grid-A, B, D, E and their labels</div>
+      <div class="grp"><span>Facade::Panels</span><span>13 · colour via layer only</span></div><div class="hint" style="padding-top:0">Geometry and own attributes identical; they look different because the layer colour changed.</div>`;
+  }
+  renderCard();
+  const done = state.done.size;
+  document.getElementById('progTxt').textContent = `${done} / ${rows.length} reviewed`;
+  const look = [0, 1].every(i => state.done.has(i));
+  const so = document.getElementById('signoff');
+  so.style.opacity = look ? 1 : .5; so.className = look ? 'btn pri' : 'btn';
+  so.textContent = look ? 'Sign off' : 'Sign off · 2 left';
+}
+
+function renderCard() {
+  const r = rows[state.sel], card = document.getElementById('card');
+  if (!r) { card.innerHTML = ''; return; }
+  const label = { modified: 'Modified', added: 'Added', removed: 'Removed', event: 'Layer event' }[r.kind];
+  const kv = r.changed.map(([k, a, b]) => `<span class="k">${k}</span><span><code class="from">${a}</code> → <code class="to">${b}</code></span>`).join('');
+  const same = r.same.length ? `<div class="sec">Unchanged · ${r.same.length}</div><div class="same">${r.same.map(s => `<span>${s}</span>`).join('')}</div>` : '';
+  const acts = r.kind === 'event'
+    ? `<button class="btn">Select ${r.objs.length} in Rhino</button><button class="btn">Show layer</button><button class="btn warn">Restore colour from A</button>`
+    : `<button class="btn">Zoom to <kbd>F</kbd></button><button class="btn">Select in Rhino</button><button class="btn">Mark intended</button><button class="btn warn">${r.kind === 'added' ? 'Delete' : 'Restore from A'}</button>`;
+  card.innerHTML = `<div class="hd"><span class="st" style="background:${S[r.kind]}${r.kind === 'event' ? ';color:#fff' : ''}">${label}</span><h4>${r.name}</h4><span class="badge">${r.match}</span></div>
+    <div class="meta">${r.grp} · ${r.objs.length} object${r.objs.length > 1 ? 's' : ''}</div>
+    <div class="sec">Changed · ${r.changed.length}</div><div class="kv">${kv}</div>${r.why ? `<div class="why">${r.why}</div>` : ''}${same}
+    <div class="acts">${acts}</div>`;
+}
+
+function select(i) { state.sel = Math.max(0, Math.min(rows.length - 1, i)); renderList(); render(); }
+document.getElementById('list').addEventListener('click', e => {
+  const t = e.target.closest('[data-tick]');
+  if (t) { const i = +t.dataset.tick; state.done.has(i) ? state.done.delete(i) : state.done.add(i); renderList(); render(); return; }
+  const it = e.target.closest('[data-i]');
+  if (it) { if (state.tab !== 'changes') { state.tab = 'changes'; setTabs(); } select(+it.dataset.i); }
+});
+document.getElementById('list').addEventListener('mouseover', e => {
+  const it = e.target.closest('.item'); const h = it ? +it.dataset.i : null;
+  if (h !== state.hover) { state.hover = h; render(); }
+});
+document.getElementById('list').addEventListener('mouseleave', () => { state.hover = null; render(); });
+function seg(id, key, multi) {
+  document.getElementById(id).addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (multi) { state[key] = !state[key]; b.classList.toggle('on', state[key]); }
+    else { state[key] = b.dataset.v; [...b.parentNode.querySelectorAll('button')].forEach(x => x.classList.toggle('on', x === b)); }
+    render();
+  });
+}
+seg('hudSeg', 'hud'); seg('showSeg', 'show'); seg('ghostSeg', 'ghost', true);
+function setTabs() { [...document.querySelectorAll('#tabs button')].forEach(b => b.classList.toggle('on', b.dataset.t === state.tab)); }
+document.getElementById('tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; state.tab = b.dataset.t; setTabs(); renderList(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'j' || e.key === 'ArrowDown') { select(state.sel + 1); e.preventDefault(); }
+  else if (e.key === 'k' || e.key === 'ArrowUp') { select(state.sel - 1); e.preventDefault(); }
+  else if (e.key === ' ') { state.done.has(state.sel) ? state.done.delete(state.sel) : state.done.add(state.sel); select(state.sel + 1); e.preventDefault(); }
+});
+renderList(); render();
+</script>
+</body>
+</html>

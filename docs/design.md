@@ -47,8 +47,15 @@ Any two inputs can be A and B. The core's result is plain data, so every shell s
 | Shell | Phase | Who it serves | What it does |
 | --- | --- | --- | --- |
 | Grasshopper components | v0 | Computational designers | Automate diffs, filter results, run QA gates, bake, export reports |
-| Rhino panel and display conduit | v1 | Modelers, PMs, reviewers | Browse, zoom to, review and sign off. No GH needed |
+| Rhino plug-in: `DittoReview` command, review panel, viewport HUD | v1 | Modelers, PMs, reviewers | Browse, zoom to, review and sign off. No GH needed |
 | Headless (Rhino.Compute) | Later | Teams, CI | Diff on every save, or in CI on each commit |
+
+**Packaging (decided 2026-11-28):** from v1, DittoHopper is mainly a Rhino plug-in. One Yak package ships two plug-ins on the same core:
+
+- `DittoHopper.rhp` holds the `DittoReview` command, the review panel and the viewport HUD. Most people review here.
+- `DittoHopper.gha` holds the Grasshopper components, which are for automation and QA gates. Open Review hands a result to the `.rhp`'s panel.
+
+The shared assemblies sit in one package folder, so both plug-ins load the same copy.
 
 **Why GH fits:** computational designers already work there. The diff is data, so added and moved objects feed filters, tags, bakes and reports. Rule-based QA ("fail if anything on `Structure::*` changed") falls out naturally. GH is also the fastest way to iterate on the matching logic.
 
@@ -224,9 +231,20 @@ The output people want is a sentence like "Outside `Facade::*`, only 28 objects 
 
 - Color modes: *Status* (default), *By property* (one color per changed property), *Layer from → to* (fill = new layer color, halo = old layer color).
 - Layout modes: Overlay, Side by side, Swipe, Changes only. A's previous state can show as a ghost.
+- Unchanged objects draw in a dark slate (`#374151`): it must stay readable against Rhino's default grey background and against white.
+
+**Viewport HUD (v1, see [v1-review.html](mocks/v1-review.html)).** A `DisplayConduit` draws in 2D over the view. It is display-only, so every action lives in the panel.
+
+- **Card (default, with tags):** A → B with units and tolerance; the summary sentence; counts as chips (needs a look, modified, added, removed, table events, unchanged); the gate result; review progress.
+- **Tags:** leader labels on each "needs a look" object and on the selected row. They follow the objects as the view orbits. A change too small to see (a tiny nudge) gets a ring.
+- **Strip:** one line of counts at the bottom, for small screens. The HUD can also be turned off.
 
 **Review panel behavior:**
 
+- **Header:** A → B (each side is a file, or the document live or as last saved), Scope, Gate, and the summary sentence.
+- **Tabs:** Changes, Layers (the matrix) and Unchanged. Unchanged lists what was checked and found identical, per layer, so a quiet result can be trusted.
+- Changes are grouped as *Needs a look*, then *Table events*, then *In scope* (or *Changes* when no scope is set).
+- Hovering a row highlights its objects; selecting a row dims everything else and shows the object card.
 - Causes first, objects second. Table events sit at the top and expand to their objects.
 - Review is a to-do list. Rows can be ticked off, and that state is saved with the DiffResult, so a team can sign off "v12 → v13".
 - Confidence is always visible as a badge. Fuzzy pairs get an Unlink button.
@@ -385,7 +403,8 @@ The building blocks are in RhinoCommon. Rigid-transform fitting, sequence diffs 
 | Object join and split | v0 and v1 report removed + added; v2 links them ("split into 3", "joined from 4") | Decided |
 | Restore from A with a missing layer or block | Recreate the layer or block from A, and list what was recreated | Decided |
 | Detector thresholds | Keep the starting values (lone deletion ≤ 3 objects, mass change ≥ 3 layers); tune on real files | Decided |
-| Platform | UI-free core; GH components v0; Rhino panel v1; headless later | Proposed |
+| Platform | UI-free core; GH components v0; from v1 mainly a Rhino plug-in (`.rhp`: command, panel, HUD), with the GH components in the same Yak package; headless later | Decided |
+| Viewport HUD | Card + tags by default; Strip and Off as options; display-only | Decided |
 | Object matching | Five-pass cascade, each pair with `matchedBy` and confidence | Proposed |
 | Geometry classification | Six-level ladder, steps 2–5 only on hash-differing pairs | Proposed |
 
@@ -397,8 +416,15 @@ None right now. The owner answered the seven earlier questions on 2026-11-27; th
 
 1. **v0a, core and fixtures.** Snapshot, table diff, matching passes 1–3, property compare, ladder steps 1–3, change sets, JSON output. Gate: the fixture suite passes, and noise is measured on two or three real project revisions.
 2. **v0, Grasshopper.** The components in the UX table, matching passes 4–5, ladder steps 4–5, detectors. Gate: the owner uses it on a real revision and trusts the result.
-3. **v1, Rhino panel and conduit.** Review list, matrix, object card, layer flow view, viewport modes, sign-off saved with the result, Restore from A.
-4. **Later.** Snapshot history sidecar, headless runs on Rhino.Compute or CI, per-face Brep matching, object join and split detection (v2), then worksessions, linked blocks and referenced files.
+3. **v1a, Rhino plug-in.** `DittoHopper.rhp` in the same Yak package. It adds:
+   - the `DittoReview` command: the document vs its last save, or vs a file;
+   - the review panel with the Changes and Unchanged tabs, the object card, and J/K navigation;
+   - the HUD: card, tags, nudge ring and strip;
+   - status colours and the ghost drawn by the plug-in's conduit;
+   - zoom to and select in Rhino;
+   - an Open Review component in GH.
+4. **v1b, review state.** The Layers matrix tab; ticks, "intended" and sign-off saved with the result; Restore from A; the layer flow view; the other viewport modes.
+5. **Later.** Snapshot history sidecar, headless runs on Rhino.Compute or CI, per-face Brep matching, object join and split detection (v2), then worksessions, linked blocks and referenced files.
 
 ## Test plan
 
@@ -433,3 +459,4 @@ Interactive HTML mocks from the design session. Open them in a browser:
 - [p5-props-a.html](mocks/p5-props-a.html): scope, matrix and change sets
 - [p5-props-b.html](mocks/p5-props-b.html): object cards, layer flow, viewport modes, detectors
 - [p6-geometry.html](mocks/p6-geometry.html): geometry ladder and examples
+- [v1-review.html](mocks/v1-review.html): v1 review panel and viewport HUD, using real output from a generated revision (added 2026-11-28; supersedes panel B of p4-ui)
